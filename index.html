@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Psychopath Timer // Ship Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark">✦</span><div><strong>PSYCHOPATH TIMER</strong><span>SHIPBOARD OPERATIONS CONSOLE</span></div></div>
+        <div class="top-meta"><span class="signal"><i></i> LOCAL LINK</span><span id="clock">00:00:00</span></div>
+      </header>
+      <main>
+        <section class="hero panel">
+          <div><p class="eyebrow">// SHIFT CONTROL / DECK 04</p><h1>COUNTDOWN <em>TO FREEDOM</em></h1><p class="hero-copy">Track the remaining mission time. Keep the crew focused.</p></div>
+          <div class="readout"><span>ACTIVE TIMERS</span><strong id="active-count">00</strong></div>
+        </section>
+        <div class="workspace">
+          <section class="timers-column">
+            <div class="section-heading"><div><p class="eyebrow">// LIVE SYSTEMS</p><h2>MISSION TIMERS</h2></div><button class="primary" id="open-timer">+ NEW COUNTDOWN</button></div>
+            <div id="timer-list" class="timer-list"></div>
+            <div id="empty-state" class="empty-state panel"><span class="empty-icon">◎</span><h3>NO ACTIVE MISSIONS</h3><p>Deploy a countdown to begin tracking the shift.</p><button class="text-button" id="empty-add">+ CREATE FIRST COUNTDOWN</button></div>
+          </section>
+          <aside class="crew-column panel"><div class="aside-heading"><div><p class="eyebrow">// PERSONNEL</p><h2>CREW MANIFEST</h2></div><span class="crew-count" id="crew-count">00</span></div><div id="people-list" class="people-list"></div><form id="person-form" class="person-form"><input id="person-name" type="text" maxlength="24" placeholder="Enter crew name" required /><button aria-label="Add person">+</button></form><p class="aside-note">Crew members can be assigned to any mission countdown.</p></aside>
+        </div>
+      </main>
+      <footer><span>SYS.STATUS: NOMINAL</span><span>ALL TIMES LOCAL // DATA STORED ON THIS DEVICE</span><span>v1.0.0</span></footer>
+    </div>
+    <dialog id="timer-dialog" class="timer-dialog"><form id="timer-form"><div class="dialog-heading"><div><p class="eyebrow">// NEW MISSION RECORD</p><h2>DEPLOY COUNTDOWN</h2></div><button type="button" class="close" id="close-dialog">×</button></div><label>MISSION NAME<input id="timer-name" type="text" maxlength="32" placeholder="e.g. Survive the shift" required /></label><div class="form-grid"><label>START TIME <span>(optional)</span><input id="timer-start" type="datetime-local" /></label><label>END TIME<input id="timer-end" type="datetime-local" required /></label></div><fieldset><legend>ASSIGN CREW</legend><div id="crew-picker" class="crew-picker"></div></fieldset><div class="dialog-actions"><button type="button" class="secondary" id="cancel-dialog">ABORT</button><button class="primary" type="submit">DEPLOY TIMER →</button></div></form></dialog>
+    <script src="app.js"></script>
+  </body>
+</html>
