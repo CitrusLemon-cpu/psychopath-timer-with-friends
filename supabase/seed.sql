@@ -1,0 +1,1 @@
+-- Intentionally empty. Local data should be created by tests or the application.
