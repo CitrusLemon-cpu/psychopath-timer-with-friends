@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(69);
+select plan(71);
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -16,6 +16,16 @@ select is(
   (select identity_kind::text from public.profiles where id = '10000000-0000-0000-0000-000000000001'),
   'permanent', 'permanent auth users receive permanent profiles'
 );
+
+update public.profiles set handle = case id
+  when '10000000-0000-0000-0000-000000000001' then 'owner'
+  when '10000000-0000-0000-0000-000000000002' then 'member'
+  when '10000000-0000-0000-0000-000000000003' then 'outsider'
+  else handle end,
+  display_name = coalesce(display_name, case id
+    when '10000000-0000-0000-0000-000000000002' then 'Member'
+    when '10000000-0000-0000-0000-000000000003' then 'Outsider'
+    else display_name end);
 select is(
   (select identity_kind::text from public.profiles where id = '10000000-0000-0000-0000-000000000004'),
   'anonymous', 'anonymous auth users receive anonymous profiles'
@@ -23,6 +33,7 @@ select is(
 
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":false}', true);
+select ok(public.server_time() between now() - interval '1 second' and now() + interval '1 second', 'authenticated clients can synchronize against server time');
 select lives_ok(
   $$select public.create_room('Capacity room', 'invite_only', 'allow_guests', 2, false)$$,
   'an authenticated account can atomically create a room'
@@ -31,6 +42,17 @@ select is(
   (select role::text from public.room_memberships where user_id = auth.uid() and room_id = (select id from public.rooms where name = 'Capacity room')),
   'owner', 'room creation also creates its owner membership'
 );
+select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000002","role":"authenticated","is_anonymous":false}', true);
+update public.profiles set handle = 'user_' || substr(md5(auth.uid()::text), 1, 19), display_name = null where id = auth.uid();
+select throws_ok(
+  $$select public.create_room('Incomplete profile room')$$,
+  '42501', 'complete profile required to create rooms',
+  'permanent users must complete their profile before creating rooms'
+);
+reset role;
+update public.profiles set handle = 'member', display_name = 'Member' where id = '10000000-0000-0000-0000-000000000002';
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":false}', true);
 select lives_ok(
   $$select public.create_room_invite((select id from public.rooms where name = 'Capacity room'), 'MEMBER1')$$,
   'owner can create a revocable invite grant'

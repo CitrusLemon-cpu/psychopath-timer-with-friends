@@ -16,9 +16,10 @@ interface TimerModalProps {
   timer?: MissionTimer
   onClose: () => void
   onSave: (timer: MissionTimer) => void
+  allowShared?: boolean
 }
 
-export function TimerModal({ crew, currentUserId, now, timer, onClose, onSave }: TimerModalProps) {
+export function TimerModal({ crew, currentUserId, now, timer, onClose, onSave, allowShared = true }: TimerModalProps) {
   const initialStart = timer?.startAt ?? now
   const [name, setName] = useState(timer?.name ?? '')
   const [mode, setMode] = useState<'duration' | 'end'>('duration')
@@ -26,10 +27,11 @@ export function TimerModal({ crew, currentUserId, now, timer, onClose, onSave }:
   const [endAt, setEndAt] = useState(toLocalInput(timer?.endAt ?? initialStart + 60 * 60_000))
   const [hours, setHours] = useState(timer ? Math.max(0, Math.floor((timer.endAt - timer.startAt) / 3_600_000)) : 1)
   const [minutes, setMinutes] = useState(timer ? Math.floor(((timer.endAt - timer.startAt) % 3_600_000) / 60_000) : 0)
-  const [type, setType] = useState<TimerType>(timer?.type ?? 'shared')
+  const [type, setType] = useState<TimerType>(timer?.type ?? (allowShared ? 'shared' : 'personal'))
   const [assignees, setAssignees] = useState(timer?.assigneeIds ?? [currentUserId])
   const [color, setColor] = useState(timer?.color ?? colors[0])
   const [error, setError] = useState('')
+  const [controlPolicy, setControlPolicy] = useState(timer?.controlPolicy ?? 'creator_only')
 
   function submit(event: FormEvent) {
     event.preventDefault()
@@ -54,6 +56,8 @@ export function TimerModal({ crew, currentUserId, now, timer, onClose, onSave }:
       assigneeIds: selected,
       pausedAt: timer?.pausedAt ?? null,
       createdBy: timer?.createdBy ?? currentUserId,
+      durationSeconds: Math.ceil((end - start) / 1000),
+      controlPolicy,
     })
   }
 
@@ -80,10 +84,11 @@ export function TimerModal({ crew, currentUserId, now, timer, onClose, onSave }:
           <legend>TIMER TYPE</legend>
           <div className="type-options">
             <label className={type === 'personal' ? 'selected' : ''}><input type="radio" name="type" checked={type === 'personal'} onChange={() => setType('personal')} />PERSONAL <span>VISIBLE TO CREW</span></label>
-            <label className={type === 'shared' ? 'selected' : ''}><input type="radio" name="type" checked={type === 'shared'} onChange={() => setType('shared')} />SHARED <span>ASSIGN MULTIPLE CREW</span></label>
+            {allowShared && <label className={type === 'shared' ? 'selected' : ''}><input type="radio" name="type" checked={type === 'shared'} onChange={() => setType('shared')} />SHARED <span>ASSIGN MULTIPLE CREW</span></label>}
           </div>
         </fieldset>
-        {type === 'shared' && <fieldset><legend>ASSIGN CREW</legend><div className="crew-picker">{crew.map((member) => <label key={member.id} className={assignees.includes(member.id) ? 'selected' : ''}><input type="checkbox" checked={assignees.includes(member.id)} onChange={() => toggleAssignee(member.id)} /><span>{member.initials}</span>{member.name}</label>)}</div></fieldset>}
+        {type === 'shared' && <fieldset><legend>ASSIGN CREW</legend><div className="crew-picker">{crew.map((member) => <label key={member.id} className={assignees.includes(member.id) ? 'selected' : ''}><input type="checkbox" checked={assignees.includes(member.id)} onChange={() => toggleAssignee(member.id)} /><span>{member.initials}</span>{member.name}</label>)}</div><label className="policy-option"><input type="checkbox" checked={controlPolicy === 'all_assigned'} onChange={(event) => setControlPolicy(event.target.checked ? 'all_assigned' : 'creator_only')} /> ALLOW ASSIGNED CREW TO CONTROL THIS TIMER</label></fieldset>}
+        {!allowShared && <p className="modal-note">GUEST ACCESS · PERSONAL TIMERS ONLY</p>}
         <fieldset className="color-field"><legend>PROGRESS COLOR <span>{color.toUpperCase()}</span></legend><div className="color-options">{colors.map((option) => <button key={option} type="button" className={`color-swatch ${color === option ? 'selected' : ''}`} style={{ '--swatch': option } as React.CSSProperties} onClick={() => setColor(option)} aria-label={`Use ${option}`} />)}<input type="color" value={color} onChange={(event) => setColor(event.target.value)} aria-label="Custom progress color" /></div></fieldset>
         {error && <p className="form-error" role="alert">{error}</p>}
         <div className="dialog-actions"><button className="secondary" type="button" onClick={onClose}>ABORT</button><button className="primary" type="submit">{timer ? 'SAVE CHANGES' : 'DEPLOY TIMER'} →</button></div>

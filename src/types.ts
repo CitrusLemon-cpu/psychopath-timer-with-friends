@@ -1,5 +1,7 @@
 export type TimerType = 'personal' | 'shared'
 export type TimerFilter = 'all' | 'mine' | 'shared' | 'standby' | 'paused'
+export type TimerControlPolicy = 'creator_only' | 'all_assigned'
+export type TimerDatabaseState = 'idle' | 'scheduled' | 'running' | 'paused' | 'completed' | 'cancelled'
 
 export interface CrewMember {
   id: string
@@ -7,6 +9,7 @@ export interface CrewMember {
   role: string
   online: boolean
   initials: string
+  handle?: string
 }
 
 export interface MissionTimer {
@@ -19,12 +22,18 @@ export interface MissionTimer {
   assigneeIds: string[]
   pausedAt: number | null
   createdBy: string
+  durationSeconds?: number
+  controlPolicy?: TimerControlPolicy
+  databaseState?: TimerDatabaseState
+  canControl?: boolean
 }
 
 export interface ActivityItem {
   id: string
-  timer: MissionTimer
-  completedAt: number
+  label: string
+  detail: string
+  occurredAt: number
+  timer?: MissionTimer
 }
 
 export interface ChatMessage {
@@ -44,10 +53,20 @@ export interface Room {
   activity: ActivityItem[]
   chat: ChatMessage[]
   lastVisitedAt: number
+  role?: string
+  canCreateSharedTimers?: boolean
+  inviteCode?: string
 }
 
 export interface AppState {
   rooms: Room[]
   activeRoomId: string | null
   currentUserId: string
+}
+
+export interface UserProfile {
+  id: string
+  handle: string
+  displayName: string | null
+  identityKind: 'anonymous' | 'permanent'
 }
