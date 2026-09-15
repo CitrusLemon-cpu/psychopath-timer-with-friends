@@ -57,14 +57,12 @@ create table public.room_invites (
   code text not null,
   created_by uuid not null references public.profiles(id) on delete cascade,
   granted_to uuid references public.profiles(id) on delete cascade,
-  granted_role public.room_role not null default 'member',
   max_uses smallint not null default 1,
   use_count smallint not null default 0,
   expires_at timestamptz,
   revoked_at timestamptz,
   created_at timestamptz not null default now(),
   constraint invites_code_format check (code ~ '^[A-Z0-9]{6,12}$'),
-  constraint invites_role check (granted_role in ('member', 'guest')),
   constraint invites_use_limits check (max_uses between 1 and 50 and use_count between 0 and max_uses),
   constraint invites_expiration check (expires_at is null or expires_at > created_at)
 );

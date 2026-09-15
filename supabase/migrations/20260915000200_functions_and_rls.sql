@@ -86,7 +86,6 @@ $$;
 create or replace function public.create_room_invite(
   target_room_id uuid,
   invite_code text,
-  invite_role public.room_role default 'member',
   invite_granted_to uuid default null,
   invite_max_uses integer default 1,
   invite_expires_at timestamptz default null
@@ -97,8 +96,8 @@ begin
   if not public.has_room_role(target_room_id, array['owner','moderator']::public.room_role[]) then
     raise exception 'owner or moderator role required' using errcode = '42501';
   end if;
-  insert into public.room_invites(room_id, code, created_by, granted_to, granted_role, max_uses, expires_at)
-  values (target_room_id, upper(invite_code), auth.uid(), invite_granted_to, invite_role, invite_max_uses, invite_expires_at)
+  insert into public.room_invites(room_id, code, created_by, granted_to, max_uses, expires_at)
+  values (target_room_id, upper(invite_code), auth.uid(), invite_granted_to, invite_max_uses, invite_expires_at)
   returning * into created_invite;
   return created_invite;
 end;
@@ -141,13 +140,10 @@ begin
   if selected_room.guest_policy = 'accounts_only' and public.current_user_is_anonymous() then
     raise exception 'anonymous users cannot join this room' using errcode = '42501';
   end if;
-  if public.current_user_is_anonymous() and selected_invite.granted_role <> 'guest' then
-    raise exception 'anonymous users may only join as guests' using errcode = '42501';
-  end if;
   perform public.assert_room_capacity(selected_room.id);
   insert into public.room_memberships(room_id, user_id, role, room_nickname)
   values (selected_room.id, actor,
-          case when public.current_user_is_anonymous() then 'guest'::public.room_role else selected_invite.granted_role end,
+          case when public.current_user_is_anonymous() then 'guest'::public.room_role else 'member'::public.room_role end,
           nickname)
   returning * into created_membership;
   update public.room_invites set use_count = use_count + 1 where id = selected_invite.id;
@@ -185,13 +181,10 @@ begin
   if selected_room.guest_policy = 'accounts_only' and public.current_user_is_anonymous() then
     raise exception 'anonymous users cannot join this room' using errcode = '42501';
   end if;
-  if public.current_user_is_anonymous() and selected_invite.granted_role <> 'guest' then
-    raise exception 'anonymous users may only request guest access' using errcode = '42501';
-  end if;
   insert into public.room_join_requests(room_id, user_id, requested_role, invite_id, room_nickname)
   values (
     selected_room.id, actor,
-    case when public.current_user_is_anonymous() then 'guest'::public.room_role else selected_invite.granted_role end,
+    case when public.current_user_is_anonymous() then 'guest'::public.room_role else 'member'::public.room_role end,
     selected_invite.id, nickname
   ) returning * into created_request;
   return created_request;
@@ -584,7 +577,7 @@ grant execute on function public.current_user_is_anonymous(), public.is_room_mem
   public.has_active_sanction(uuid, uuid, public.sanction_kind), public.can_control_countdown(uuid, uuid)
   to authenticated;
 grant execute on function public.create_room(text, public.admission_policy, public.guest_policy, integer, boolean),
-  public.create_room_invite(uuid, text, public.room_role, uuid, integer, timestamptz),
+  public.create_room_invite(uuid, text, uuid, integer, timestamptz),
   public.revoke_room_invite(uuid), public.redeem_room_invite(text, text),
   public.request_room_join_with_invite(text, text),
   public.review_room_join_request(uuid, boolean),

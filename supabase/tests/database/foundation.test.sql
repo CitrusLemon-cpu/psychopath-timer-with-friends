@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(64);
+select plan(69);
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -32,7 +32,7 @@ select is(
   'owner', 'room creation also creates its owner membership'
 );
 select lives_ok(
-  $$select public.create_room_invite((select id from public.rooms where name = 'Capacity room'), 'MEMBER1', 'member')$$,
+  $$select public.create_room_invite((select id from public.rooms where name = 'Capacity room'), 'MEMBER1')$$,
   'owner can create a revocable invite grant'
 );
 
@@ -41,7 +41,7 @@ select lives_ok($$select public.redeem_room_invite('MEMBER1')$$, 'invite redempt
 
 select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":false}', true);
 select lives_ok(
-  $$select public.create_room_invite((select id from public.rooms where name = 'Capacity room'), 'MEMBER2', 'member')$$,
+  $$select public.create_room_invite((select id from public.rooms where name = 'Capacity room'), 'MEMBER2')$$,
   'owner can issue another grant even when the room is full'
 );
 select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000003","role":"authenticated","is_anonymous":false}', true);
@@ -70,21 +70,21 @@ select throws_ok(
 select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000003","role":"authenticated","is_anonymous":false}', true);
 select lives_ok($$select public.create_room('Guest room', 'invite_only', 'allow_guests', 5, false)$$, 'account creates guest-enabled room');
 select lives_ok(
-  $$select public.create_room_invite((select id from public.rooms where name = 'Guest room'), 'GUEST01', 'member')$$,
-  'room owner creates a member-only grant'
+  $$select public.create_room_invite((select id from public.rooms where name = 'Guest room'), 'GUEST01', null, 2)$$,
+  'room owner creates one identity-neutral multi-use code'
+);
+select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":false}', true);
+select lives_ok($$select public.redeem_room_invite('GUEST01')$$, 'permanent user can redeem the shared code');
+select is(
+  (select role::text from public.room_memberships where room_id = (select id from public.rooms where name = 'Guest room') and user_id = auth.uid()),
+  'member', 'permanent redeemer derives member role'
 );
 select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000004","role":"authenticated","is_anonymous":true}', true);
-select throws_ok(
-  $$select public.redeem_room_invite('GUEST01')$$, '42501', 'anonymous users may only join as guests',
-  'anonymous users cannot gain permanent-member roles'
+select lives_ok($$select public.redeem_room_invite('GUEST01')$$, 'anonymous user can redeem the same shared code');
+select is(
+  (select role::text from public.room_memberships where room_id = (select id from public.rooms where name = 'Guest room') and user_id = auth.uid()),
+  'guest', 'anonymous redeemer derives guest role'
 );
-select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000003","role":"authenticated","is_anonymous":false}', true);
-select lives_ok(
-  $$select public.create_room_invite((select id from public.rooms where name = 'Guest room'), 'GUEST02', 'guest')$$,
-  'room owner can issue a guest grant'
-);
-select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000004","role":"authenticated","is_anonymous":true}', true);
-select lives_ok($$select public.redeem_room_invite('GUEST02')$$, 'anonymous user can join a guest-enabled room as guest');
 select lives_ok(
   $$select public.create_countdown('personal', 'Guest personal', 30, (select id from public.rooms where name = 'Guest room'))$$,
   'guest can create a room-scoped personal timer'
@@ -218,8 +218,8 @@ select lives_ok(
   'account can create an approval-required room'
 );
 select lives_ok(
-  $$select public.create_room_invite((select id from public.rooms where name = 'Approval room'), 'APPROV1', 'member', '10000000-0000-0000-0000-000000000002')$$,
-  'approval room can issue a user-bound invite'
+  $$select public.create_room_invite((select id from public.rooms where name = 'Approval room'), 'APPROV1', null, 2)$$,
+  'approval room can issue one identity-neutral multi-use invite'
 );
 select hasnt_function(
   'public', 'request_room_join', array['uuid', 'public.room_role'],
@@ -246,14 +246,26 @@ select lives_ok(
   'owner atomically approves the request and consumes its invite'
 );
 select is((select use_count::integer from public.room_invites where code = 'APPROV1'), 1, 'approved request consumes exactly one invite use');
-select is(
-  (select room_nickname from public.room_memberships where room_id = (select id from public.rooms where name = 'Approval room') and user_id = '10000000-0000-0000-0000-000000000002'),
-  'Pending Nick', 'approval carries the requested nickname into membership'
+select ok(
+  (select room_nickname = 'Pending Nick' and role = 'member' from public.room_memberships where room_id = (select id from public.rooms where name = 'Approval room') and user_id = '10000000-0000-0000-0000-000000000002'),
+  'approval carries nickname and derives member role for permanent user'
 );
+select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000004","role":"authenticated","is_anonymous":true}', true);
+select lives_ok($$select public.request_room_join_with_invite('APPROV1', 'Anon Nick')$$, 'anonymous user requests approval with the same code');
+select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000003","role":"authenticated","is_anonymous":false}', true);
+select lives_ok(
+  $$select public.review_room_join_request((select id from public.room_join_requests where room_id = (select id from public.rooms where name = 'Approval room') and user_id = '10000000-0000-0000-0000-000000000004' and status = 'pending'), true)$$,
+  'owner approves anonymous request using the same invite grant'
+);
+select is(
+  (select role::text from public.room_memberships where room_id = (select id from public.rooms where name = 'Approval room') and user_id = '10000000-0000-0000-0000-000000000004'),
+  'guest', 'approval derives guest role for anonymous user'
+);
+select is((select use_count::integer from public.room_invites where code = 'APPROV1'), 2, 'one approval code admits both identity types and consumes two uses');
 
 select lives_ok($$select public.create_room('Guest succession', 'invite_only', 'allow_guests', 5, false)$$, 'owner creates succession test room');
 select lives_ok(
-  $$select public.create_room_invite((select id from public.rooms where name = 'Guest succession'), 'SUCGST', 'guest')$$,
+  $$select public.create_room_invite((select id from public.rooms where name = 'Guest succession'), 'SUCGST')$$,
   'owner invites anonymous succession candidate'
 );
 select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000004","role":"authenticated","is_anonymous":true}', true);
@@ -272,11 +284,11 @@ set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000003","role":"authenticated","is_anonymous":false}', true);
 select lives_ok($$select public.create_room('Registered succession', 'invite_only', 'allow_guests', 5, false)$$, 'owner creates registered succession room');
 select lives_ok(
-  $$select public.create_room_invite((select id from public.rooms where name = 'Registered succession'), 'SUC2GT', 'guest')$$,
+  $$select public.create_room_invite((select id from public.rooms where name = 'Registered succession'), 'SUC2GT')$$,
   'anonymous guest is invited first'
 );
 select lives_ok(
-  $$select public.create_room_invite((select id from public.rooms where name = 'Registered succession'), 'SUC2MB', 'member')$$,
+  $$select public.create_room_invite((select id from public.rooms where name = 'Registered succession'), 'SUC2MB')$$,
   'registered member is invited second'
 );
 select set_config('request.jwt.claims', '{"sub":"10000000-0000-0000-0000-000000000004","role":"authenticated","is_anonymous":true}', true);
