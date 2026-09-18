@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { MembershipRow, ProfileRow, RoomRow } from '../supabase/database.types'
+import type { CountdownRow, MembershipRow, ProfileRow, RoomRow } from '../supabase/database.types'
 import { mapRoomData } from './mappers'
 
 const room: RoomRow = { id: 'room-1', owner_id: 'owner-1', name: 'Room', admission_policy: 'invite_only', guest_policy: 'allow_guests', capacity: 10, moderators_can_control_timers: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }
@@ -28,5 +28,12 @@ describe('room crew mapping', () => {
   it('preserves the current guest and online guests during reconnects', () => {
     expect(mapped('guest-1', new Set()).crew.map((member) => member.id)).toContain('guest-1')
     expect(mapped('owner-1', new Set(['owner-1', 'guest-1'])).crew.map((member) => member.id)).toContain('guest-1')
+  })
+
+  it('lets creators and assigned crew edit shared timers', () => {
+    const timer: CountdownRow = { id: 'timer-1', scope: 'shared', room_id: room.id, owner_user_id: null, creator_id: 'owner-1', name: 'Shared task', duration_seconds: 60, color: '#54d6d2', control_policy: 'creator_only', state: 'idle', scheduled_start_at: null, started_at: null, ends_at: null, paused_remaining_seconds: null, created_at: room.created_at, updated_at: room.updated_at }
+    const input = { room, membership: memberships[1], memberships, profiles, countdowns: [timer], participants: [{ countdown_id: timer.id, user_id: 'member-1', assigned_by: 'owner-1', created_at: room.created_at }], messages: [], activity: [], currentUserId: 'member-1' }
+    expect(mapRoomData(input).timers[0].canEdit).toBe(true)
+    expect(mapRoomData({ ...input, membership: memberships[2], currentUserId: 'guest-1' }).timers[0].canEdit).toBe(false)
   })
 })

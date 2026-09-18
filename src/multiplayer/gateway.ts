@@ -43,6 +43,7 @@ export interface MultiplayerGateway {
   createRoom(name: string): Promise<{ roomId: string; inviteCode: string }>
   joinRoom(code: string, nickname?: string): Promise<JoinResult>
   createCountdown(input: CountdownInput): Promise<void>
+  updateCountdown(countdownId: string, input: CountdownInput): Promise<void>
   controlCountdown(countdownId: string, action: 'start' | 'pause' | 'complete' | 'cancel' | 'reset'): Promise<void>
   finalizeElapsedCountdowns(roomId: string): Promise<number>
   sendMessage(roomId: string, content: string): Promise<void>

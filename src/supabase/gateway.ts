@@ -161,6 +161,21 @@ export class SupabaseGateway implements MultiplayerGateway {
     throwIfError(created.error)
   }
 
+  async updateCountdown(countdownId: string, input: CountdownInput) {
+    const { error } = await this.client.rpc('update_countdown', {
+      target_countdown_id: countdownId,
+      target_scope: input.scope,
+      countdown_name: input.name,
+      seconds: input.durationSeconds,
+      countdown_color: input.color,
+      policy: input.controlPolicy,
+      participant_ids: input.scope === 'shared' ? input.participantIds : [],
+      scheduled_for: input.scheduledFor,
+      start_immediately: input.startImmediately,
+    })
+    throwIfError(error)
+  }
+
   async controlCountdown(countdownId: string, action: 'start' | 'pause' | 'complete' | 'cancel' | 'reset') {
     const { error } = await this.client.rpc('control_countdown', { target_countdown_id: countdownId, action })
     throwIfError(error)

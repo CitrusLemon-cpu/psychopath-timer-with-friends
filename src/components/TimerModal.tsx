@@ -83,8 +83,8 @@ export function TimerModal({ crew, currentUserId, now, timer, onClose, onSave, a
         <fieldset>
           <legend>TIMER TYPE</legend>
           <div className="type-options">
-            <label className={type === 'personal' ? 'selected' : ''}><input type="radio" name="type" checked={type === 'personal'} onChange={() => setType('personal')} />PERSONAL <span>VISIBLE TO CREW</span></label>
-            {allowShared && <label className={type === 'shared' ? 'selected' : ''}><input type="radio" name="type" checked={type === 'shared'} onChange={() => setType('shared')} />SHARED <span>ASSIGN MULTIPLE CREW</span></label>}
+            <label className={type === 'personal' ? 'selected' : ''}><input type="radio" name="type" checked={type === 'personal'} onChange={() => setType('personal')} disabled={Boolean(timer)} />PERSONAL <span>VISIBLE TO CREW</span></label>
+            {allowShared && <label className={type === 'shared' ? 'selected' : ''}><input type="radio" name="type" checked={type === 'shared'} onChange={() => setType('shared')} disabled={Boolean(timer)} />SHARED <span>ASSIGN MULTIPLE CREW</span></label>}
           </div>
         </fieldset>
         {type === 'shared' && <fieldset><legend>ASSIGN CREW</legend><div className="crew-picker">{crew.map((member) => <label key={member.id} className={assignees.includes(member.id) ? 'selected' : ''}><input type="checkbox" checked={assignees.includes(member.id)} onChange={() => toggleAssignee(member.id)} /><span>{member.initials}</span>{member.name}</label>)}</div><label className="policy-option"><input type="checkbox" checked={controlPolicy === 'all_assigned'} onChange={(event) => setControlPolicy(event.target.checked ? 'all_assigned' : 'creator_only')} /> ALLOW ASSIGNED CREW TO CONTROL THIS TIMER</label></fieldset>}
