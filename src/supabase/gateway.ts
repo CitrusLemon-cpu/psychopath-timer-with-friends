@@ -154,15 +154,16 @@ export class SupabaseGateway implements MultiplayerGateway {
       target_room_id: input.roomId,
       policy: input.controlPolicy,
       participant_ids: input.scope === 'shared' ? input.participantIds : [],
+      fixed_end: input.fixedEnd,
     }
     const created = input.startImmediately
-      ? await this.client.rpc('create_and_start_countdown', parameters)
-      : await this.client.rpc('create_countdown', { ...parameters, scheduled_for: input.scheduledFor })
+      ? await this.client.rpc('create_and_start_countdown_v2', parameters)
+      : await this.client.rpc('create_countdown_v2', { ...parameters, scheduled_for: input.scheduledFor })
     throwIfError(created.error)
   }
 
   async updateCountdown(countdownId: string, input: CountdownInput) {
-    const { error } = await this.client.rpc('update_countdown', {
+    const { error } = await this.client.rpc('update_countdown_v2', {
       target_countdown_id: countdownId,
       target_scope: input.scope,
       countdown_name: input.name,
@@ -172,6 +173,7 @@ export class SupabaseGateway implements MultiplayerGateway {
       participant_ids: input.scope === 'shared' ? input.participantIds : [],
       scheduled_for: input.scheduledFor,
       start_immediately: input.startImmediately,
+      fixed_end: input.fixedEnd,
     })
     throwIfError(error)
   }

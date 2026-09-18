@@ -35,6 +35,11 @@ describe('timer math', () => {
     expect(getTimerMetrics(resumed, 9_000).remainingMs).toBe(6_000)
   })
 
+  it('does not pause fixed-end timers', () => {
+    const fixed = { ...timer, fixedEnd: true }
+    expect(toggleTimer(fixed, 5_000)).toEqual(fixed)
+  })
+
   it('formats long and negative durations safely', () => {
     expect(formatDuration(3_661_000)).toBe('01:01:01')
     expect(formatDuration(-1)).toBe('00:00:00')

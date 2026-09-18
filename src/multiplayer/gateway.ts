@@ -15,6 +15,7 @@ export interface CountdownInput {
   name: string
   scope: TimerType
   durationSeconds: number
+  fixedEnd: boolean
   color: string
   controlPolicy: TimerControlPolicy
   participantIds: string[]

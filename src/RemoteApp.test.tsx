@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
@@ -10,7 +10,7 @@ const profile: UserProfile = { id: user.id, handle: 'ripley', displayName: 'Elle
 const room: Room = {
   id: 'room-1', code: 'CREWCODE1', inviteCode: 'CREWCODE1', name: 'USCSS NOSTROMO', deck: '1/10 CREW · INVITE ONLY', lastVisitedAt: Date.now(), role: 'owner', canCreateSharedTimers: true,
   crew: [{ id: user.id, name: 'Ellen Ripley', handle: 'ripley', role: 'OWNER', online: true, initials: 'ER' }],
-  timers: [{ id: 'timer-1', name: 'AIRLOCK CYCLE', startAt: Date.now() - 1_000, endAt: Date.now() + 60_000, color: '#54d6d2', type: 'shared', assigneeIds: [user.id], pausedAt: null, createdBy: user.id, durationSeconds: 60, controlPolicy: 'all_assigned', databaseState: 'running', canControl: true, canEdit: true }],
+  timers: [{ id: 'timer-1', name: 'AIRLOCK CYCLE', startAt: Date.now() - 1_000, endAt: Date.now() + 60_000, color: '#54d6d2', type: 'shared', assigneeIds: [user.id], pausedAt: null, createdBy: user.id, durationSeconds: 60, fixedEnd: false, controlPolicy: 'all_assigned', databaseState: 'running', canControl: true, canEdit: true }],
   activity: [], chat: [],
 }
 
@@ -92,6 +92,17 @@ describe('Supabase mode', () => {
     await actor.type(screen.getByPlaceholderText('e.g. Survive the shift'), 'Reactor check')
     await actor.click(screen.getByRole('button', { name: /DEPLOY TIMER →/ }))
     await waitFor(() => expect(remote.createCountdown).toHaveBeenCalledWith(expect.objectContaining({ roomId: room.id, name: 'Reactor check', scope: 'shared', color: '#54d6d2', participantIds: [user.id], controlPolicy: 'creator_only', startImmediately: true })))
+  })
+
+  it('hides pause for a fixed-end remote timer', async () => {
+    const fixedRoom = { ...room, timers: [{ ...room.timers[0], fixedEnd: true }] }
+    const remote = gateway({ loadRooms: vi.fn(async () => [fixedRoom]) })
+    const actor = userEvent.setup()
+    render(<App gateway={remote} />)
+    await actor.click(await screen.findByRole('button', { name: /USCSS NOSTROMO/i }))
+    const card = screen.getByRole('heading', { name: 'AIRLOCK CYCLE' }).closest('article')!
+    expect(within(card).getByText(/FIXED END/)).toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: /PAUSE/ })).not.toBeInTheDocument()
   })
 
   it('updates an editable remote timer instead of creating a duplicate', async () => {

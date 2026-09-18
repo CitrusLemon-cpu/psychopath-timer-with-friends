@@ -22,7 +22,7 @@ interface TimerModalProps {
 export function TimerModal({ crew, currentUserId, now, timer, onClose, onSave, allowShared = true }: TimerModalProps) {
   const initialStart = timer?.startAt ?? now
   const [name, setName] = useState(timer?.name ?? '')
-  const [mode, setMode] = useState<'duration' | 'end'>('duration')
+  const [mode, setMode] = useState<'duration' | 'end'>(timer?.fixedEnd ? 'end' : 'duration')
   const [startAt, setStartAt] = useState(toLocalInput(initialStart))
   const [endAt, setEndAt] = useState(toLocalInput(timer?.endAt ?? initialStart + 60 * 60_000))
   const [hours, setHours] = useState(timer ? Math.max(0, Math.floor((timer.endAt - timer.startAt) / 3_600_000)) : 1)
@@ -57,6 +57,7 @@ export function TimerModal({ crew, currentUserId, now, timer, onClose, onSave, a
       pausedAt: timer?.pausedAt ?? null,
       createdBy: timer?.createdBy ?? currentUserId,
       durationSeconds: Math.ceil((end - start) / 1000),
+      fixedEnd: mode === 'end',
       controlPolicy,
     })
   }

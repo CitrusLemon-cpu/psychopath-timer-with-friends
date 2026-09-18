@@ -34,16 +34,16 @@ describe('SupabaseGateway RPC boundary', () => {
 
   it('maps countdown creation and immediate control to the authoritative RPCs', async () => {
     const rpc = vi.fn().mockResolvedValueOnce({ data: { id: 'timer-1', state: 'running' }, error: null })
-    await new SupabaseGateway(clientWithRpc(rpc)).createCountdown({ roomId: createdRoom.id, name: 'Shared check', scope: 'shared', durationSeconds: 600, color: '#a78bfa', controlPolicy: 'all_assigned', participantIds: ['user-1', 'user-2'], scheduledFor: null, startImmediately: true })
+    await new SupabaseGateway(clientWithRpc(rpc)).createCountdown({ roomId: createdRoom.id, name: 'Shared check', scope: 'shared', durationSeconds: 600, fixedEnd: false, color: '#a78bfa', controlPolicy: 'all_assigned', participantIds: ['user-1', 'user-2'], scheduledFor: null, startImmediately: true })
     expect(rpc).toHaveBeenCalledOnce()
-    expect(rpc).toHaveBeenCalledWith('create_and_start_countdown', { target_scope: 'shared', countdown_name: 'Shared check', seconds: 600, countdown_color: '#a78bfa', target_room_id: createdRoom.id, policy: 'all_assigned', participant_ids: ['user-1', 'user-2'] })
+    expect(rpc).toHaveBeenCalledWith('create_and_start_countdown_v2', { target_scope: 'shared', countdown_name: 'Shared check', seconds: 600, countdown_color: '#a78bfa', target_room_id: createdRoom.id, policy: 'all_assigned', participant_ids: ['user-1', 'user-2'], fixed_end: false })
   })
 
   it('updates countdowns through the authorized RPC', async () => {
     const rpc = vi.fn().mockResolvedValue({ data: { id: 'timer-1' }, error: null })
-    await new SupabaseGateway(clientWithRpc(rpc)).updateCountdown('timer-1', { roomId: createdRoom.id, name: 'Updated check', scope: 'shared', durationSeconds: 90, color: '#54d6d2', controlPolicy: 'all_assigned', participantIds: ['user-2'], scheduledFor: null, startImmediately: true })
-    expect(rpc).toHaveBeenCalledWith('update_countdown', {
-      target_countdown_id: 'timer-1', target_scope: 'shared', countdown_name: 'Updated check', seconds: 90, countdown_color: '#54d6d2', policy: 'all_assigned', participant_ids: ['user-2'], scheduled_for: null, start_immediately: true,
+    await new SupabaseGateway(clientWithRpc(rpc)).updateCountdown('timer-1', { roomId: createdRoom.id, name: 'Updated check', scope: 'shared', durationSeconds: 90, fixedEnd: true, color: '#54d6d2', controlPolicy: 'all_assigned', participantIds: ['user-2'], scheduledFor: null, startImmediately: true })
+    expect(rpc).toHaveBeenCalledWith('update_countdown_v2', {
+      target_countdown_id: 'timer-1', target_scope: 'shared', countdown_name: 'Updated check', seconds: 90, countdown_color: '#54d6d2', policy: 'all_assigned', participant_ids: ['user-2'], scheduled_for: null, start_immediately: true, fixed_end: true,
     })
   })
 
@@ -63,7 +63,7 @@ describe('SupabaseGateway RPC boundary', () => {
   })
 
   it('scopes participant reads to countdowns loaded for the room', async () => {
-    const timer = { id: 'timer-1', scope: 'shared', room_id: createdRoom.id, owner_user_id: null, creator_id: 'user-1', name: 'Scoped timer', duration_seconds: 60, color: '#a78bfa', control_policy: 'creator_only', state: 'running', scheduled_start_at: null, started_at: new Date().toISOString(), ends_at: new Date(Date.now() + 60_000).toISOString(), paused_remaining_seconds: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }
+    const timer = { id: 'timer-1', scope: 'shared', room_id: createdRoom.id, owner_user_id: null, creator_id: 'user-1', name: 'Scoped timer', duration_seconds: 60, color: '#a78bfa', fixed_end: false, control_policy: 'creator_only', state: 'running', scheduled_start_at: null, started_at: new Date().toISOString(), ends_at: new Date(Date.now() + 60_000).toISOString(), paused_remaining_seconds: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }
     const profileRow = { id: 'user-2', handle: 'member', display_name: 'Member', identity_kind: 'permanent', created_at: new Date().toISOString(), updated_at: new Date().toISOString() }
     const responses: Record<string, unknown[]> = {
       rooms: [{ data: createdRoom, error: null }],

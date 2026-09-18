@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import App from './App'
@@ -49,5 +49,19 @@ describe('core local flows', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent('Assign at least one crew member to a shared timer.')
     expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('does not offer pause for a timer created with a fixed end time', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: /USCSS NOSTROMO/i }))
+    await user.click(screen.getByRole('button', { name: '+ NEW COUNTDOWN' }))
+    await user.type(screen.getByPlaceholderText('e.g. Survive the shift'), 'Fixed deadline')
+    await user.click(screen.getByRole('button', { name: 'END TIME' }))
+    await user.click(screen.getByRole('button', { name: /DEPLOY TIMER →/ }))
+
+    const card = screen.getByRole('heading', { name: 'Fixed deadline' }).closest('article')!
+    expect(within(card).getByText(/FIXED END/)).toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: /PAUSE/ })).not.toBeInTheDocument()
   })
 })

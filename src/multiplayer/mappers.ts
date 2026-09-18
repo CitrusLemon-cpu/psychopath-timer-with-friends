@@ -70,6 +70,7 @@ export function mapRoomData(input: {
       pausedAt: row.state === 'paused' ? Date.parse(row.updated_at) : null,
       createdBy: row.creator_id,
       durationSeconds: row.duration_seconds,
+      fixedEnd: row.fixed_end,
       controlPolicy: row.control_policy,
       databaseState: row.state,
       canControl,

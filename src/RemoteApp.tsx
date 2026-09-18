@@ -159,17 +159,18 @@ export default function RemoteApp({ gateway }: RemoteAppProps) {
   const displayName = profile.displayName || 'Temporary Crewmate'
   return <div className="shell"><RemoteHeader now={now} connection={connection} onHome={() => setActiveRoom(null)} onEditProfile={profile.identityKind === 'permanent' ? () => setEditingProfile(true) : undefined} onSignOut={() => void signOut()} />{activeRoom ? <RoomView room={activeRoom} currentUserId={user.id} now={now} isRemote connectionLabel={connection === 'live' ? 'LIVE PRIVATE LINK' : 'RECONNECTING'} actionError={error} onBack={() => { setActiveRoom(null); void loadDashboard(user) }} onSaveTimer={(timer) => void perform(async () => {
     const scheduled = timer.startAt > now + 2_000
-    const input = { roomId: activeRoom.id, name: timer.name, scope: timer.type, durationSeconds: timer.durationSeconds ?? Math.ceil((timer.endAt - timer.startAt) / 1000), color: timer.color, controlPolicy: timer.controlPolicy ?? 'creator_only', participantIds: timer.type === 'shared' ? timer.assigneeIds : [], scheduledFor: scheduled ? new Date(timer.startAt).toISOString() : null, startImmediately: !scheduled }
+    const input = { roomId: activeRoom.id, name: timer.name, scope: timer.type, durationSeconds: timer.durationSeconds ?? Math.ceil((timer.endAt - timer.startAt) / 1000), fixedEnd: timer.fixedEnd ?? false, color: timer.color, controlPolicy: timer.controlPolicy ?? 'creator_only', participantIds: timer.type === 'shared' ? timer.assigneeIds : [], scheduledFor: scheduled ? new Date(timer.startAt).toISOString() : null, startImmediately: !scheduled }
     if (activeRoom.timers.some((item) => item.id === timer.id)) await gateway.updateCountdown(timer.id, input)
     else await gateway.createCountdown(input)
   })} onToggleTimer={(id) => void perform(() => {
     const timer = activeRoom.timers.find((item) => item.id === id)
+    if (timer?.fixedEnd && timer.databaseState === 'running') return Promise.resolve()
     const action = timer?.databaseState === 'running' || (timer?.databaseState === 'scheduled' && now >= timer.startAt) ? 'pause' : 'start'
     return gateway.controlCountdown(id, action)
   })} onDeleteTimer={(id) => void perform(() => gateway.controlCountdown(id, 'cancel'))} onRunAgain={(id) => void perform(async () => {
     const timer = activeRoom.activity.find((item) => item.id === id)?.timer
     if (!timer) return
-    await gateway.createCountdown({ roomId: activeRoom.id, name: timer.name, scope: timer.type, durationSeconds: timer.durationSeconds!, color: timer.color, controlPolicy: timer.controlPolicy ?? 'creator_only', participantIds: timer.assigneeIds, scheduledFor: null, startImmediately: true })
+    await gateway.createCountdown({ roomId: activeRoom.id, name: timer.name, scope: timer.type, durationSeconds: timer.durationSeconds!, fixedEnd: false, color: timer.color, controlPolicy: timer.controlPolicy ?? 'creator_only', participantIds: timer.assigneeIds, scheduledFor: null, startImmediately: true })
   })} onSendMessage={(message: ChatMessage) => void perform(() => gateway.sendMessage(activeRoom.id, message.text))} /> : <Dashboard rooms={rooms} now={now} displayName={displayName} isGuest={user.isAnonymous} isRemote onOpenRoom={(id) => {
     const room = rooms.find((item) => item.id === id)
     if (room) setActiveRoom(room)

@@ -32,6 +32,7 @@ export function getTimerMetrics(timer: MissionTimer, now: number) {
 }
 
 export function toggleTimer(timer: MissionTimer, now: number): MissionTimer {
+  if (timer.fixedEnd && timer.pausedAt === null) return timer
   if (timer.pausedAt === null) return { ...timer, pausedAt: now }
   const pausedFor = now - timer.pausedAt
   return {
