@@ -23,6 +23,7 @@ export interface MissionTimer {
   pausedAt: number | null
   createdBy: string
   durationSeconds?: number
+  fixedEnd?: boolean
   controlPolicy?: TimerControlPolicy
   databaseState?: TimerDatabaseState
   canControl?: boolean

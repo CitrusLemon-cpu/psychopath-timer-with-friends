@@ -31,7 +31,7 @@ describe('room crew mapping', () => {
   })
 
   it('lets creators and assigned crew edit shared timers', () => {
-    const timer: CountdownRow = { id: 'timer-1', scope: 'shared', room_id: room.id, owner_user_id: null, creator_id: 'owner-1', name: 'Shared task', duration_seconds: 60, color: '#54d6d2', control_policy: 'creator_only', state: 'idle', scheduled_start_at: null, started_at: null, ends_at: null, paused_remaining_seconds: null, created_at: room.created_at, updated_at: room.updated_at }
+    const timer: CountdownRow = { id: 'timer-1', scope: 'shared', room_id: room.id, owner_user_id: null, creator_id: 'owner-1', name: 'Shared task', duration_seconds: 60, color: '#54d6d2', fixed_end: false, control_policy: 'creator_only', state: 'idle', scheduled_start_at: null, started_at: null, ends_at: null, paused_remaining_seconds: null, created_at: room.created_at, updated_at: room.updated_at }
     const input = { room, membership: memberships[1], memberships, profiles, countdowns: [timer], participants: [{ countdown_id: timer.id, user_id: 'member-1', assigned_by: 'owner-1', created_at: room.created_at }], messages: [], activity: [], currentUserId: 'member-1' }
     expect(mapRoomData(input).timers[0].canEdit).toBe(true)
     expect(mapRoomData({ ...input, membership: memberships[2], currentUserId: 'guest-1' }).timers[0].canEdit).toBe(false)
