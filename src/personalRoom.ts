@@ -1,3 +1,4 @@
+import { COMPLETION_GRACE_MS, getTimerStatus } from './timer'
 import type { Room } from './types'
 
 export const guestPersonalRoomStorageKey = 'psychopath-timer-guest-personal-room-v1'
@@ -38,4 +39,15 @@ export function loadGuestPersonalRoom(userId: string, displayName?: string | nul
 
 export function saveGuestPersonalRoom(room: Room) {
   localStorage.setItem(guestPersonalRoomStorageKey, JSON.stringify(room))
+}
+
+export function sweepCompletedTimers(room: Room, tick: number): Room | null {
+  const completed = room.timers.filter((timer) => getTimerStatus(timer, tick) === 'complete' && !room.activity.some((item) => item.timer?.id === timer.id))
+  const expired = room.timers.filter((timer) => getTimerStatus(timer, tick) === 'complete' && tick - timer.endAt >= COMPLETION_GRACE_MS)
+  if (!completed.length && !expired.length) return null
+  return {
+    ...room,
+    timers: room.timers.filter((timer) => !expired.some((item) => item.id === timer.id)),
+    activity: [...completed.map((timer) => ({ id: crypto.randomUUID(), timer, label: 'TIMER COMPLETED', detail: timer.type.toUpperCase(), occurredAt: timer.endAt })), ...room.activity].slice(0, 25),
+  }
 }

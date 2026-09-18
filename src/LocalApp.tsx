@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { Dashboard } from './components/Dashboard'
 import { RoomView } from './components/RoomView'
 import { demoState } from './demo'
-import { createBrowserPersonalRoom } from './personalRoom'
-import { COMPLETION_GRACE_MS, getTimerStatus, toggleTimer } from './timer'
+import { createBrowserPersonalRoom, sweepCompletedTimers } from './personalRoom'
+import { toggleTimer } from './timer'
 import type { AppState, ChatMessage, MissionTimer, Room } from './types'
 
 const storageKey = 'psychopath-timer-react-state-v1'
@@ -55,15 +55,10 @@ export default function LocalApp() {
       setState((current) => {
         let changed = false
         const rooms = current.rooms.map((room) => {
-          const completed = room.timers.filter((timer) => getTimerStatus(timer, tick) === 'complete' && !room.activity.some((item) => item.timer?.id === timer.id))
-          const expired = room.timers.filter((timer) => getTimerStatus(timer, tick) === 'complete' && tick - timer.endAt >= COMPLETION_GRACE_MS)
-          if (!completed.length && !expired.length) return room
+          const next = sweepCompletedTimers(room, tick)
+          if (!next) return room
           changed = true
-          return {
-            ...room,
-            timers: room.timers.filter((timer) => !expired.some((item) => item.id === timer.id)),
-            activity: [...completed.map((timer) => ({ id: crypto.randomUUID(), timer, label: 'TIMER COMPLETED', detail: timer.type.toUpperCase(), occurredAt: timer.endAt })), ...room.activity].slice(0, 25),
-          }
+          return next
         })
         return changed ? { ...current, rooms } : current
       })

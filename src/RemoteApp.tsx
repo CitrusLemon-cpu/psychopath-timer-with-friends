@@ -4,7 +4,7 @@ import { Dashboard } from './components/Dashboard'
 import { ProfileSetup } from './components/ProfileSetup'
 import { RoomView } from './components/RoomView'
 import { readableError, type AuthUser, type MultiplayerGateway, type RoomSubscription } from './multiplayer/gateway'
-import { createBrowserPersonalRoom, loadGuestPersonalRoom, saveGuestPersonalRoom } from './personalRoom'
+import { createBrowserPersonalRoom, loadGuestPersonalRoom, saveGuestPersonalRoom, sweepCompletedTimers } from './personalRoom'
 import { toggleTimer } from './timer'
 import type { ChatMessage, Room, UserProfile } from './types'
 
@@ -28,6 +28,7 @@ export default function RemoteApp({ gateway }: RemoteAppProps) {
   const onlineUsers = useRef<Set<string> | undefined>(undefined)
   const subscription = useRef<RoomSubscription | null>(null)
   const authIdentity = useRef<string | null>(null)
+  const browserRoom = useRef<Room | null>(null)
   const activeRoomId = activeRoom?.id
 
   const clearUserState = useCallback(() => {
@@ -42,13 +43,23 @@ export default function RemoteApp({ gateway }: RemoteAppProps) {
     if (current) void current.unsubscribe()
   }, [])
 
+  const provisionPersonalRoom = useCallback(async (currentUser: AuthUser) => {
+    if (currentUser.isAnonymous) return
+    try {
+      await gateway.ensurePersonalRoom()
+    } catch (caught) {
+      setError(readableError(caught))
+      setConnection('degraded')
+    }
+  }, [gateway])
+
   const loadDashboard = useCallback(async (currentUser: AuthUser) => {
-    if (!currentUser.isAnonymous) await gateway.ensurePersonalRoom()
+    await provisionPersonalRoom(currentUser)
     const loaded = await gateway.loadRooms(currentUser.id)
     setRooms((current) => currentUser.isAnonymous
       ? [current.find((room) => room.browserLocal) ?? createBrowserPersonalRoom(currentUser.id), ...loaded.filter((room) => !room.isPersonal)]
       : loaded)
-  }, [gateway])
+  }, [gateway, provisionPersonalRoom])
 
   const refreshRoom = useCallback(async (roomId: string, currentUser: AuthUser, presence?: Set<string>) => {
     if (presence) onlineUsers.current = presence
@@ -84,10 +95,10 @@ export default function RemoteApp({ gateway }: RemoteAppProps) {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
           const nextProfile = await gateway.getProfile(user!.id)
-          if (!user!.isAnonymous) await gateway.ensurePersonalRoom()
+          await provisionPersonalRoom(user!)
           const loadedRooms = await gateway.loadRooms(user!.id)
           const nextRooms = user!.isAnonymous ? [loadGuestPersonalRoom(user!.id, nextProfile.displayName, nextProfile.handle), ...loadedRooms.filter((room) => !room.isPersonal)] : loadedRooms
-          if (active) { setProfile(nextProfile); setRooms(nextRooms); setConnection('live') }
+          if (active) { setProfile(nextProfile); setRooms(nextRooms); setConnection((current) => current === 'degraded' ? current : 'live') }
           return
         } catch (caught) {
           if (!/JWT issued at future/i.test(readableError(caught)) || attempt === 2) throw caught
@@ -97,10 +108,24 @@ export default function RemoteApp({ gateway }: RemoteAppProps) {
     }
     load().catch((caught) => { if (active) { setError(readableError(caught)); setConnection('degraded') } })
     return () => { active = false }
-  }, [gateway, user])
+  }, [gateway, provisionPersonalRoom, user])
 
   useEffect(() => {
-    const interval = window.setInterval(() => setNow(Date.now() + clockOffset), 1_000)
+    browserRoom.current = activeRoom?.browserLocal ? activeRoom : null
+  }, [activeRoom])
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const tick = Date.now() + clockOffset
+      setNow(tick)
+      const current = browserRoom.current
+      if (!current) return
+      const next = sweepCompletedTimers(current, tick)
+      if (!next) return
+      saveGuestPersonalRoom(next)
+      setActiveRoom(next)
+      setRooms((rooms) => rooms.map((room) => room.id === next.id ? next : room))
+    }, 1_000)
     return () => window.clearInterval(interval)
   }, [clockOffset])
 
@@ -226,7 +251,7 @@ export default function RemoteApp({ gateway }: RemoteAppProps) {
   if (editingProfile && profile.identityKind === 'permanent') return <div className="shell"><RemoteHeader now={now} connection={connection} onHome={() => setEditingProfile(false)} onSignOut={() => void signOut()} /><ProfileSetup gateway={gateway} profile={profile} onCancel={() => setEditingProfile(false)} onSaved={(next) => { setProfile(next); setEditingProfile(false); void loadDashboard(user) }} /><RemoteFooter connection={connection} /></div>
 
   const displayName = profile.displayName || 'Temporary Crewmate'
-  return <div className="shell"><RemoteHeader now={now} connection={connection} onHome={() => setActiveRoom(null)} onEditProfile={profile.identityKind === 'permanent' ? () => setEditingProfile(true) : undefined} onSignOut={() => void signOut()} />{activeRoom ? <RoomView room={activeRoom} currentUserId={user.id} now={now} isRemote connectionLabel={activeRoom.browserLocal ? 'BROWSER ONLY' : connection === 'live' ? 'LIVE PRIVATE LINK' : 'RECONNECTING'} actionError={error} onBack={() => { setActiveRoom(null); void loadDashboard(user) }} onSaveTimer={saveTimer} onToggleTimer={toggleActiveTimer} onDeleteTimer={deleteTimer} onRunAgain={runAgain} onSendMessage={sendMessage} /> : <Dashboard rooms={rooms} now={now} displayName={displayName} isGuest={user.isAnonymous} isRemote onOpenRoom={(id) => {
+  return <div className="shell"><RemoteHeader now={now} connection={connection} onHome={() => setActiveRoom(null)} onEditProfile={profile.identityKind === 'permanent' ? () => setEditingProfile(true) : undefined} onSignOut={() => void signOut()} />{activeRoom ? <RoomView room={activeRoom} currentUserId={user.id} now={now} isRemote connectionLabel={activeRoom.browserLocal ? 'BROWSER ONLY' : connection === 'live' ? 'LIVE PRIVATE LINK' : 'RECONNECTING'} actionError={error} onBack={() => { setActiveRoom(null); void loadDashboard(user) }} onSaveTimer={saveTimer} onToggleTimer={toggleActiveTimer} onDeleteTimer={deleteTimer} onRunAgain={runAgain} onSendMessage={sendMessage} /> : <Dashboard rooms={rooms} now={now} displayName={displayName} isGuest={user.isAnonymous} isRemote loadError={error} onOpenRoom={(id) => {
     const room = rooms.find((item) => item.id === id)
     if (room) setActiveRoom(room)
   }} onCreateRoom={async (name) => {

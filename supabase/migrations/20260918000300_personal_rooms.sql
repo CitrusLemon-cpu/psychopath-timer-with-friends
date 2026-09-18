@@ -27,7 +27,6 @@ begin
     returning * into personal_room;
 
     if personal_room.id is not null then
-      insert into public.room_memberships(room_id, user_id, role) values (personal_room.id, actor, 'owner');
       insert into public.room_ownership_history(room_id, new_owner_id, reason) values (personal_room.id, actor, 'created');
       insert into public.activity_events(room_id, actor_id, event_type, subject_type, subject_id)
       values (personal_room.id, actor, 'room_created', 'room', personal_room.id);
@@ -36,25 +35,45 @@ begin
     end if;
   end if;
 
+  insert into public.room_memberships(room_id, user_id, role)
+  values (personal_room.id, actor, 'owner')
+  on conflict (room_id, user_id) do nothing;
+
   return personal_room;
 end;
 $$;
 
 create function public.enforce_personal_room_boundaries()
 returns trigger language plpgsql set search_path = '' as $$
-declare target_room public.rooms;
+declare target_room public.rooms; affected_room_id uuid;
 begin
-  select * into target_room from public.rooms where id = new.room_id;
+  affected_room_id := case when tg_op = 'DELETE' then old.room_id else new.room_id end;
+  select * into target_room from public.rooms where id = affected_room_id;
+  if target_room.is_personal and tg_op = 'DELETE' then
+    raise exception 'personal rooms cannot lose their owner membership' using errcode = '42501';
+  end if;
   if target_room.is_personal and (new.user_id <> target_room.owner_id or new.role <> 'owner') then
     raise exception 'personal rooms cannot accept members' using errcode = '42501';
   end if;
-  return new;
+  return case when tg_op = 'DELETE' then old else new end;
 end;
 $$;
 
 create trigger memberships_enforce_personal_room
-before insert or update on public.room_memberships
+before insert or update or delete on public.room_memberships
 for each row execute function public.enforce_personal_room_boundaries();
+
+create function public.cleanup_personal_rooms_for_profile()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  delete from public.rooms where owner_id = old.id and is_personal;
+  return old;
+end;
+$$;
+
+create trigger profiles_cleanup_personal_rooms
+before delete on public.profiles
+for each row execute function public.cleanup_personal_rooms_for_profile();
 
 create function public.reject_personal_room_invites()
 returns trigger language plpgsql set search_path = '' as $$

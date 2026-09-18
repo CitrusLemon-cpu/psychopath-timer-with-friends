@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(10);
+select plan(16);
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -37,6 +37,40 @@ select throws_ok(
   '42501', 'personal rooms cannot be left', 'personal rooms cannot be left'
 );
 
+reset role;
+alter table public.room_memberships disable trigger memberships_enforce_personal_room;
+delete from public.room_memberships
+where room_id = (select id from public.rooms where owner_id = '40000000-0000-0000-0000-000000000001' and is_personal);
+alter table public.room_memberships enable trigger memberships_enforce_personal_room;
+select is(
+  (select count(*)::integer from public.room_memberships where room_id = (select id from public.rooms where owner_id = '40000000-0000-0000-0000-000000000001' and is_personal)),
+  0, 'a stripped personal room membership leaves the room orphaned'
+);
+
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"40000000-0000-0000-0000-000000000001","role":"authenticated","is_anonymous":false}', true);
+select lives_ok($$select public.ensure_personal_room()$$, 'provisioning repairs a stripped membership');
+select is(
+  (select count(*)::integer from public.room_memberships where user_id = auth.uid() and room_id = (select id from public.rooms where owner_id = auth.uid() and is_personal)),
+  1, 'the repaired membership restores access to the personal room'
+);
+
+reset role;
+select throws_ok(
+  $$delete from public.room_memberships where user_id = '40000000-0000-0000-0000-000000000001' and room_id = (select id from public.rooms where owner_id = '40000000-0000-0000-0000-000000000001' and is_personal)$$,
+  '42501', 'personal rooms cannot lose their owner membership', 'personal room membership deletion is rejected'
+);
+
+select lives_ok(
+  $$delete from public.profiles where id = '40000000-0000-0000-0000-000000000001'$$,
+  'the account profile can be deleted with its personal room'
+);
+select is(
+  (select count(*)::integer from public.rooms where owner_id = '40000000-0000-0000-0000-000000000001'),
+  0, 'personal room is removed with the account profile'
+);
+
+set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"40000000-0000-0000-0000-000000000002","role":"authenticated","is_anonymous":true}', true);
 select throws_ok($$select public.ensure_personal_room()$$, '42501', 'permanent account required', 'anonymous users cannot create server-backed personal rooms');
 

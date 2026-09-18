@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import type { AuthSnapshot, MultiplayerGateway, RoomRefreshKind } from './multiplayer/gateway'
+import { guestPersonalRoomStorageKey } from './personalRoom'
+import { COMPLETION_GRACE_MS } from './timer'
 import type { Room, UserProfile } from './types'
 
 const user = { id: 'user-1', email: 'owner@example.test', isAnonymous: false }
@@ -105,6 +107,30 @@ describe('Supabase mode', () => {
     render(<App gateway={remote} />)
     await actor.click(await screen.findByRole('button', { name: /Calm Pilot 014’s Room/i }))
     expect(screen.getByText('Checked the reactor seals.')).toBeInTheDocument()
+  })
+
+  it('moves a completed guest timer into the browser-backed mission log', async () => {
+    const guestUser = { ...user, isAnonymous: true, email: null }
+    const guestProfile: UserProfile = { ...profile, identityKind: 'anonymous', displayName: 'Calm Pilot 014' }
+    const endedAt = Date.now() - COMPLETION_GRACE_MS - 1_000
+    localStorage.setItem(guestPersonalRoomStorageKey, JSON.stringify({
+      timers: [{ id: 'ended-timer', name: 'Finished browser timer', startAt: endedAt - 60_000, endAt: endedAt, color: '#54d6d2', type: 'personal', assigneeIds: [guestUser.id], pausedAt: null, createdBy: guestUser.id }],
+      activity: [], chat: [],
+    }))
+    const remote = gateway({ getAuth: vi.fn(async () => ({ user: guestUser })), getProfile: vi.fn(async () => guestProfile), loadRooms: vi.fn(async () => []) })
+    const actor = userEvent.setup()
+    render(<App gateway={remote} />)
+    await actor.click(await screen.findByRole('button', { name: /Calm Pilot 014’s Room/i }))
+    expect(await screen.findByText('Finished browser timer')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Finished browser timer' })).not.toBeInTheDocument())
+  })
+
+  it('still renders the dashboard when personal room provisioning fails', async () => {
+    const remote = gateway({ ensurePersonalRoom: vi.fn(async () => { throw new Error('Could not find the function public.ensure_personal_room in the schema cache') }) })
+    render(<App gateway={remote} />)
+    expect(await screen.findByRole('heading', { name: /WELCOME BACK/ })).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent(/ensure_personal_room/)
+    expect(screen.getByRole('button', { name: /USCSS NOSTROMO/i })).toBeInTheDocument()
   })
 
   it('creates rooms and safely surfaces approval-request joins', async () => {
