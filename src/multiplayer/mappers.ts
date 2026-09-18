@@ -9,6 +9,11 @@ function initials(name: string) {
   return name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()
 }
 
+function personalRoomName(profile?: ProfileRow) {
+  const identity = profile?.display_name || `@${profile?.handle ?? 'user'}`
+  return `${identity}${identity.toLowerCase().endsWith('s') ? '’' : '’s'} Room`
+}
+
 export function mapRoomData(input: {
   room: RoomRow
   membership: MembershipRow
@@ -90,14 +95,15 @@ export function mapRoomData(input: {
     id: input.room.id,
     code: input.inviteCode ?? 'PRIVATE',
     inviteCode: input.inviteCode,
-    name: input.room.name,
-    deck: `${input.memberships.length}/${input.room.capacity} CREW · ${input.room.admission_policy.replace('_', ' ').toUpperCase()}`,
+    name: input.room.is_personal ? personalRoomName(profiles.get(input.room.owner_id)) : input.room.name,
+    deck: input.room.is_personal ? 'PRIVATE PERSONAL WORKSPACE' : `${input.memberships.length}/${input.room.capacity} CREW · ${input.room.admission_policy.replace('_', ' ').toUpperCase()}`,
     crew,
     timers,
     activity,
     chat,
     lastVisitedAt: Date.parse(input.membership.updated_at),
     role: input.membership.role,
-    canCreateSharedTimers: profiles.get(input.currentUserId)?.identity_kind === 'permanent',
+    canCreateSharedTimers: !input.room.is_personal && profiles.get(input.currentUserId)?.identity_kind === 'permanent',
+    isPersonal: input.room.is_personal,
   }
 }

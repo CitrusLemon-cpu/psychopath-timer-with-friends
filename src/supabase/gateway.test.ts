@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Database, MembershipRow, RoomRow } from './database.types'
 import { SupabaseGateway } from './gateway'
 
-const createdRoom: RoomRow = { id: 'room-1', owner_id: 'user-1', name: 'Test Room', admission_policy: 'invite_only', guest_policy: 'allow_guests', capacity: 10, moderators_can_control_timers: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }
+const createdRoom: RoomRow = { id: 'room-1', owner_id: 'user-1', name: 'Test Room', admission_policy: 'invite_only', guest_policy: 'allow_guests', capacity: 10, moderators_can_control_timers: false, is_personal: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }
 const membership: MembershipRow = { room_id: createdRoom.id, user_id: 'user-2', role: 'member', room_nickname: null, succession_rank: 2, joined_at: new Date().toISOString(), updated_at: new Date().toISOString() }
 
 function clientWithRpc(rpc: ReturnType<typeof vi.fn>) {
@@ -11,6 +11,12 @@ function clientWithRpc(rpc: ReturnType<typeof vi.fn>) {
 }
 
 describe('SupabaseGateway RPC boundary', () => {
+  it('idempotently provisions the account personal room', async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: createdRoom, error: null })
+    await new SupabaseGateway(clientWithRpc(rpc)).ensurePersonalRoom()
+    expect(rpc).toHaveBeenCalledWith('ensure_personal_room')
+  })
+
   it('creates a room and exactly one identity-neutral multi-use invite', async () => {
     const rpc = vi.fn().mockResolvedValueOnce({ data: { room_id: createdRoom.id, invite_code: 'CREWCODE1' }, error: null })
     const result = await new SupabaseGateway(clientWithRpc(rpc)).createRoom('Test Room')

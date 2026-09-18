@@ -58,6 +58,8 @@ export interface Room {
   role?: string
   canCreateSharedTimers?: boolean
   inviteCode?: string
+  isPersonal?: boolean
+  browserLocal?: boolean
 }
 
 export interface AppState {

@@ -25,6 +25,7 @@ function gateway(overrides: Partial<MultiplayerGateway> = {}) {
     getProfile: vi.fn(async () => profile),
     updateProfile: vi.fn(async (_id, handle, displayName) => ({ ...profile, handle, displayName })),
     loadRooms: vi.fn(async () => [room]),
+    ensurePersonalRoom: vi.fn(async () => undefined),
     loadRoom: vi.fn(async () => ({ room, serverNow: Date.now() })),
     createRoom: vi.fn(async () => ({ roomId: room.id, inviteCode: room.code })),
     joinRoom: vi.fn(async () => ({ status: 'joined' as const, roomId: room.id })),
@@ -63,6 +64,47 @@ describe('Supabase mode', () => {
     render(<App gateway={guest} />)
     expect(await screen.findByText(/GUEST SESSION/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '+ CREATE ROOM' })).not.toBeInTheDocument()
+  })
+
+  it('pins an account personal room first and limits it to personal tools', async () => {
+    const personalRoom: Room = { ...room, id: 'personal-room', code: 'PRIVATE', name: 'Ellen Ripley’s Room', deck: 'PRIVATE PERSONAL WORKSPACE', isPersonal: true, canCreateSharedTimers: false, timers: [], chat: [] }
+    const remote = gateway({ loadRooms: vi.fn(async () => [room, personalRoom]) })
+    const actor = userEvent.setup()
+    render(<App gateway={remote} />)
+    const personalCard = await screen.findByRole('button', { name: /Ellen Ripley’s Room/i })
+    const sharedCard = screen.getByRole('button', { name: /USCSS NOSTROMO/i })
+    expect(personalCard.compareDocumentPosition(sharedCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(remote.ensurePersonalRoom).toHaveBeenCalled()
+    await actor.click(personalCard)
+    expect(screen.getByRole('heading', { name: 'PERSONAL EVENT LOG' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'CREW MANIFEST' })).not.toBeInTheDocument()
+    await actor.click(screen.getByRole('button', { name: '+ NEW COUNTDOWN' }))
+    expect(screen.queryByRole('radio', { name: /SHARED/ })).not.toBeInTheDocument()
+  })
+
+  it('keeps a guest personal event log in browser storage across remounts', async () => {
+    const guestUser = { ...user, isAnonymous: true, email: null }
+    const guestProfile: UserProfile = { ...profile, identityKind: 'anonymous', displayName: 'Calm Pilot 014' }
+    const remote = gateway({ getAuth: vi.fn(async () => ({ user: guestUser })), getProfile: vi.fn(async () => guestProfile), loadRooms: vi.fn(async () => []) })
+    const actor = userEvent.setup()
+    const first = render(<App gateway={remote} />)
+    await actor.click(await screen.findByRole('button', { name: /Calm Pilot 014’s Room/i }))
+    await actor.click(screen.getByRole('button', { name: '+ NEW COUNTDOWN' }))
+    await actor.type(screen.getByPlaceholderText('e.g. Survive the shift'), 'Browser timer')
+    await actor.click(screen.getByRole('button', { name: /DEPLOY TIMER →/ }))
+    const timerCard = screen.getByRole('heading', { name: 'Browser timer' }).closest('article')!
+    expect(within(timerCard).getByRole('button', { name: 'EDIT' })).toBeInTheDocument()
+    expect(within(timerCard).getByRole('button', { name: 'DELETE' })).toBeInTheDocument()
+    expect(remote.createCountdown).not.toHaveBeenCalled()
+    await actor.type(screen.getByRole('textbox', { name: 'Personal event' }), 'Checked the reactor seals.')
+    await actor.click(screen.getByRole('button', { name: 'Add event' }))
+    expect(screen.getByText('Checked the reactor seals.')).toBeInTheDocument()
+    expect(remote.sendMessage).not.toHaveBeenCalled()
+    first.unmount()
+
+    render(<App gateway={remote} />)
+    await actor.click(await screen.findByRole('button', { name: /Calm Pilot 014’s Room/i }))
+    expect(screen.getByText('Checked the reactor seals.')).toBeInTheDocument()
   })
 
   it('creates rooms and safely surfaces approval-request joins', async () => {

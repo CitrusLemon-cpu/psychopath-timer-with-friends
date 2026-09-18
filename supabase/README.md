@@ -40,6 +40,7 @@ Run the dry run first and inspect the migration list. Linking metadata lives und
 - All countdowns belong to a room. Personal countdowns can be edited only by their creator; shared countdowns can be edited by their creator or assigned room-member participants. Scheduled countdowns fix both `scheduled_start_at` and `ends_at`, so opening or pausing one late preserves the original timeline; running countdowns use `started_at` plus `ends_at`, while paused countdowns store only `paused_remaining_seconds`. Constraints prevent mixed timing representations.
 - Permanent profile handles are globally unique and can replace the generated onboarding handle only once. Display names remain editable.
 - Countdowns created for a specific end time persist that mode and reject pause operations at the database boundary; duration-based countdowns remain pausable.
+- Permanent accounts lazily provision exactly one private personal room, pinned separately by the client and restricted to personal timers and its owner. Anonymous guests get the same workspace from browser storage without creating server-side room data.
 - Message edits append the prior body to `message_revisions`. Deletion clears content but keeps the message row as a reply-safe tombstone.
 - Realtime database changes are published for the collaborative tables. Private channel policies authorize topics shaped as `room:<room_uuid>` against current membership; banned users cannot publish broadcasts.
 

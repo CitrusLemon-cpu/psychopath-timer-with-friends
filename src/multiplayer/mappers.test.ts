@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { CountdownRow, MembershipRow, ProfileRow, RoomRow } from '../supabase/database.types'
 import { mapRoomData } from './mappers'
 
-const room: RoomRow = { id: 'room-1', owner_id: 'owner-1', name: 'Room', admission_policy: 'invite_only', guest_policy: 'allow_guests', capacity: 10, moderators_can_control_timers: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }
+const room: RoomRow = { id: 'room-1', owner_id: 'owner-1', name: 'Room', admission_policy: 'invite_only', guest_policy: 'allow_guests', capacity: 10, moderators_can_control_timers: false, is_personal: false, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }
 const memberships: MembershipRow[] = [
   { room_id: room.id, user_id: 'owner-1', role: 'owner', room_nickname: null, succession_rank: 1, joined_at: room.created_at, updated_at: room.updated_at },
   { room_id: room.id, user_id: 'member-1', role: 'member', room_nickname: null, succession_rank: 2, joined_at: room.created_at, updated_at: room.updated_at },
@@ -35,5 +35,10 @@ describe('room crew mapping', () => {
     const input = { room, membership: memberships[1], memberships, profiles, countdowns: [timer], participants: [{ countdown_id: timer.id, user_id: 'member-1', assigned_by: 'owner-1', created_at: room.created_at }], messages: [], activity: [], currentUserId: 'member-1' }
     expect(mapRoomData(input).timers[0].canEdit).toBe(true)
     expect(mapRoomData({ ...input, membership: memberships[2], currentUserId: 'guest-1' }).timers[0].canEdit).toBe(false)
+  })
+
+  it('derives personal room presentation from the owner profile', () => {
+    const result = mapRoomData({ room: { ...room, is_personal: true }, membership: memberships[0], memberships: [memberships[0]], profiles, countdowns: [], participants: [], messages: [], activity: [], currentUserId: 'owner-1' })
+    expect(result).toMatchObject({ name: 'Owner’s Room', deck: 'PRIVATE PERSONAL WORKSPACE', isPersonal: true, canCreateSharedTimers: false })
   })
 })
