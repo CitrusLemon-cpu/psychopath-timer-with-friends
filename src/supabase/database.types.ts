@@ -16,7 +16,7 @@ type Table<Row, Insert = Partial<Row>, Update = Partial<Insert>> = {
 }
 
 export type ProfileRow = { id: string; handle: string; display_name: string | null; identity_kind: IdentityKind; created_at: string; updated_at: string }
-export type RoomRow = { id: string; owner_id: string; name: string; admission_policy: AdmissionPolicy; guest_policy: GuestPolicy; capacity: number; moderators_can_control_timers: boolean; created_at: string; updated_at: string }
+export type RoomRow = { id: string; owner_id: string; name: string; admission_policy: AdmissionPolicy; guest_policy: GuestPolicy; capacity: number; moderators_can_control_timers: boolean; is_personal: boolean; created_at: string; updated_at: string }
 export type MembershipRow = { room_id: string; user_id: string; role: RoomRole; room_nickname: string | null; succession_rank: number; joined_at: string; updated_at: string }
 export type InviteRow = { id: string; room_id: string; code: string; created_by: string; granted_to: string | null; max_uses: number; use_count: number; expires_at: string | null; revoked_at: string | null; created_at: string }
 export type CountdownRow = { id: string; scope: TimerScope; room_id: string; owner_user_id: string | null; creator_id: string; name: string; duration_seconds: number; color: string; fixed_end: boolean; control_policy: TimerControlPolicy; state: TimerState; scheduled_start_at: string | null; started_at: string | null; ends_at: string | null; paused_remaining_seconds: number | null; created_at: string; updated_at: string }
@@ -41,6 +41,7 @@ export interface Database {
       server_time: { Args: Record<string, never>; Returns: string }
       create_room: { Args: { room_name: string; room_admission_policy?: AdmissionPolicy; room_guest_policy?: GuestPolicy; room_capacity?: number; allow_moderator_timer_control?: boolean }; Returns: RoomRow }
       create_room_with_invite: { Args: { room_name: string; room_admission_policy?: AdmissionPolicy; room_guest_policy?: GuestPolicy; room_capacity?: number; allow_moderator_timer_control?: boolean }; Returns: Json }
+      ensure_personal_room: { Args: Record<string, never>; Returns: RoomRow }
       create_room_invite: { Args: { target_room_id: string; invite_code: string; invite_granted_to?: string | null; invite_max_uses?: number; invite_expires_at?: string | null }; Returns: InviteRow }
       redeem_room_invite: { Args: { invite_code: string; nickname?: string | null }; Returns: MembershipRow }
       request_room_join_with_invite: { Args: { invite_code: string; nickname?: string | null }; Returns: { id: string; status: string } }

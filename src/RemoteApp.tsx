@@ -4,6 +4,8 @@ import { Dashboard } from './components/Dashboard'
 import { ProfileSetup } from './components/ProfileSetup'
 import { RoomView } from './components/RoomView'
 import { readableError, type AuthUser, type MultiplayerGateway, type RoomSubscription } from './multiplayer/gateway'
+import { createBrowserPersonalRoom, loadGuestPersonalRoom, saveGuestPersonalRoom, sweepCompletedTimers } from './personalRoom'
+import { toggleTimer } from './timer'
 import type { ChatMessage, Room, UserProfile } from './types'
 
 interface RemoteAppProps { gateway: MultiplayerGateway }
@@ -26,6 +28,7 @@ export default function RemoteApp({ gateway }: RemoteAppProps) {
   const onlineUsers = useRef<Set<string> | undefined>(undefined)
   const subscription = useRef<RoomSubscription | null>(null)
   const authIdentity = useRef<string | null>(null)
+  const browserRoom = useRef<Room | null>(null)
   const activeRoomId = activeRoom?.id
 
   const clearUserState = useCallback(() => {
@@ -40,9 +43,23 @@ export default function RemoteApp({ gateway }: RemoteAppProps) {
     if (current) void current.unsubscribe()
   }, [])
 
-  const loadDashboard = useCallback(async (currentUser: AuthUser) => {
-    setRooms(await gateway.loadRooms(currentUser.id))
+  const provisionPersonalRoom = useCallback(async (currentUser: AuthUser) => {
+    if (currentUser.isAnonymous) return
+    try {
+      await gateway.ensurePersonalRoom()
+    } catch (caught) {
+      setError(readableError(caught))
+      setConnection('degraded')
+    }
   }, [gateway])
+
+  const loadDashboard = useCallback(async (currentUser: AuthUser) => {
+    await provisionPersonalRoom(currentUser)
+    const loaded = await gateway.loadRooms(currentUser.id)
+    setRooms((current) => currentUser.isAnonymous
+      ? [current.find((room) => room.browserLocal) ?? createBrowserPersonalRoom(currentUser.id), ...loaded.filter((room) => !room.isPersonal)]
+      : loaded)
+  }, [gateway, provisionPersonalRoom])
 
   const refreshRoom = useCallback(async (roomId: string, currentUser: AuthUser, presence?: Set<string>) => {
     if (presence) onlineUsers.current = presence
@@ -77,8 +94,11 @@ export default function RemoteApp({ gateway }: RemoteAppProps) {
     async function load() {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          const [nextProfile, nextRooms] = await Promise.all([gateway.getProfile(user!.id), gateway.loadRooms(user!.id)])
-          if (active) { setProfile(nextProfile); setRooms(nextRooms); setConnection('live') }
+          const nextProfile = await gateway.getProfile(user!.id)
+          await provisionPersonalRoom(user!)
+          const loadedRooms = await gateway.loadRooms(user!.id)
+          const nextRooms = user!.isAnonymous ? [loadGuestPersonalRoom(user!.id, nextProfile.displayName, nextProfile.handle), ...loadedRooms.filter((room) => !room.isPersonal)] : loadedRooms
+          if (active) { setProfile(nextProfile); setRooms(nextRooms); setConnection((current) => current === 'degraded' ? current : 'live') }
           return
         } catch (caught) {
           if (!/JWT issued at future/i.test(readableError(caught)) || attempt === 2) throw caught
@@ -88,15 +108,29 @@ export default function RemoteApp({ gateway }: RemoteAppProps) {
     }
     load().catch((caught) => { if (active) { setError(readableError(caught)); setConnection('degraded') } })
     return () => { active = false }
-  }, [gateway, user])
+  }, [gateway, provisionPersonalRoom, user])
 
   useEffect(() => {
-    const interval = window.setInterval(() => setNow(Date.now() + clockOffset), 1_000)
+    browserRoom.current = activeRoom?.browserLocal ? activeRoom : null
+  }, [activeRoom])
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const tick = Date.now() + clockOffset
+      setNow(tick)
+      const current = browserRoom.current
+      if (!current) return
+      const next = sweepCompletedTimers(current, tick)
+      if (!next) return
+      saveGuestPersonalRoom(next)
+      setActiveRoom(next)
+      setRooms((rooms) => rooms.map((room) => room.id === next.id ? next : room))
+    }, 1_000)
     return () => window.clearInterval(interval)
   }, [clockOffset])
 
   useEffect(() => {
-    if (!activeRoomId || !user) return
+    if (!activeRoomId || !user || activeRoom?.browserLocal) return
     let disposed = false
     gateway.subscribeToRoom(activeRoomId, user, (_kind, presence) => {
       if (disposed) return
@@ -112,10 +146,10 @@ export default function RemoteApp({ gateway }: RemoteAppProps) {
       if (current) void current.unsubscribe()
       onlineUsers.current = undefined
     }
-  }, [activeRoomId, gateway, refreshRoom, user])
+  }, [activeRoom?.browserLocal, activeRoomId, gateway, refreshRoom, user])
 
   useEffect(() => {
-    if (!activeRoom || !user) return
+    if (!activeRoom || !user || activeRoom.browserLocal) return
     const ends = activeRoom.timers
       .filter((timer) => timer.databaseState === 'running' || timer.databaseState === 'scheduled')
       .map((timer) => timer.endAt)
@@ -139,6 +173,66 @@ export default function RemoteApp({ gateway }: RemoteAppProps) {
     }
   }
 
+  function updateBrowserPersonalRoom(updater: (room: Room) => Room) {
+    if (!activeRoom?.browserLocal) return
+    const next = updater(activeRoom)
+    saveGuestPersonalRoom(next)
+    setActiveRoom(next)
+    setRooms((current) => current.map((room) => room.id === next.id ? next : room))
+  }
+
+  function saveTimer(timer: Room['timers'][number]) {
+    if (activeRoom?.browserLocal) {
+      const browserTimer = { ...timer, type: 'personal' as const, assigneeIds: [user!.id], createdBy: user!.id, canControl: true, canEdit: true }
+      updateBrowserPersonalRoom((room) => ({ ...room, timers: room.timers.some((item) => item.id === browserTimer.id) ? room.timers.map((item) => item.id === browserTimer.id ? browserTimer : item) : [browserTimer, ...room.timers] }))
+      return
+    }
+    void perform(async () => {
+      if (!activeRoom) return
+      const scheduled = timer.startAt > now + 2_000
+      const input = { roomId: activeRoom.id, name: timer.name, scope: timer.type, durationSeconds: timer.durationSeconds ?? Math.ceil((timer.endAt - timer.startAt) / 1000), fixedEnd: timer.fixedEnd ?? false, color: timer.color, controlPolicy: timer.controlPolicy ?? 'creator_only', participantIds: timer.type === 'shared' ? timer.assigneeIds : [], scheduledFor: scheduled ? new Date(timer.startAt).toISOString() : null, startImmediately: !scheduled }
+      if (activeRoom.timers.some((item) => item.id === timer.id)) await gateway.updateCountdown(timer.id, input)
+      else await gateway.createCountdown(input)
+    })
+  }
+
+  function toggleActiveTimer(id: string) {
+    const timer = activeRoom?.timers.find((item) => item.id === id)
+    if (!timer || (timer.fixedEnd && (timer.databaseState === 'running' || timer.pausedAt === null && now >= timer.startAt))) return
+    if (activeRoom?.browserLocal) {
+      updateBrowserPersonalRoom((room) => ({ ...room, timers: room.timers.map((item) => item.id === id ? toggleTimer(item, now) : item) }))
+      return
+    }
+    void perform(() => gateway.controlCountdown(id, timer.databaseState === 'running' || (timer.databaseState === 'scheduled' && now >= timer.startAt) ? 'pause' : 'start'))
+  }
+
+  function deleteTimer(id: string) {
+    if (activeRoom?.browserLocal) {
+      updateBrowserPersonalRoom((room) => ({ ...room, timers: room.timers.filter((timer) => timer.id !== id) }))
+      return
+    }
+    void perform(() => gateway.controlCountdown(id, 'cancel'))
+  }
+
+  function runAgain(id: string) {
+    const timer = activeRoom?.activity.find((item) => item.id === id)?.timer
+    if (!timer || !activeRoom) return
+    if (activeRoom.browserLocal) {
+      const duration = timer.endAt - timer.startAt
+      updateBrowserPersonalRoom((room) => ({ ...room, timers: [{ ...timer, id: crypto.randomUUID(), startAt: now, endAt: now + duration, pausedAt: null, fixedEnd: false }, ...room.timers] }))
+      return
+    }
+    void perform(() => gateway.createCountdown({ roomId: activeRoom.id, name: timer.name, scope: timer.type, durationSeconds: timer.durationSeconds!, fixedEnd: false, color: timer.color, controlPolicy: timer.controlPolicy ?? 'creator_only', participantIds: timer.assigneeIds, scheduledFor: null, startImmediately: true }))
+  }
+
+  function sendMessage(message: ChatMessage) {
+    if (activeRoom?.browserLocal) {
+      updateBrowserPersonalRoom((room) => ({ ...room, chat: [...room.chat, message].slice(-50) }))
+      return
+    }
+    if (activeRoom) void perform(() => gateway.sendMessage(activeRoom.id, message.text))
+  }
+
   async function signOut() {
     clearUserState()
     authIdentity.current = null
@@ -154,24 +248,10 @@ export default function RemoteApp({ gateway }: RemoteAppProps) {
   if (!user) return <div className="shell"><RemoteHeader now={now} connection={connection} /><AuthView gateway={gateway} /><RemoteFooter connection={connection} /></div>
   if (!profile) return <div className="loading-screen"><span className="signal"><i /> LOADING CREW PROFILE</span>{error && <p className="form-error">{error}</p>}</div>
   if (!profileComplete(profile)) return <div className="shell"><RemoteHeader now={now} connection={connection} onSignOut={() => void signOut()} /><ProfileSetup gateway={gateway} profile={profile} onSaved={setProfile} /><RemoteFooter connection={connection} /></div>
-  if (editingProfile && profile.identityKind === 'permanent') return <div className="shell"><RemoteHeader now={now} connection={connection} onHome={() => setEditingProfile(false)} onSignOut={() => void signOut()} /><ProfileSetup gateway={gateway} profile={profile} onCancel={() => setEditingProfile(false)} onSaved={(next) => { setProfile(next); setEditingProfile(false) }} /><RemoteFooter connection={connection} /></div>
+  if (editingProfile && profile.identityKind === 'permanent') return <div className="shell"><RemoteHeader now={now} connection={connection} onHome={() => setEditingProfile(false)} onSignOut={() => void signOut()} /><ProfileSetup gateway={gateway} profile={profile} onCancel={() => setEditingProfile(false)} onSaved={(next) => { setProfile(next); setEditingProfile(false); void loadDashboard(user) }} /><RemoteFooter connection={connection} /></div>
 
   const displayName = profile.displayName || 'Temporary Crewmate'
-  return <div className="shell"><RemoteHeader now={now} connection={connection} onHome={() => setActiveRoom(null)} onEditProfile={profile.identityKind === 'permanent' ? () => setEditingProfile(true) : undefined} onSignOut={() => void signOut()} />{activeRoom ? <RoomView room={activeRoom} currentUserId={user.id} now={now} isRemote connectionLabel={connection === 'live' ? 'LIVE PRIVATE LINK' : 'RECONNECTING'} actionError={error} onBack={() => { setActiveRoom(null); void loadDashboard(user) }} onSaveTimer={(timer) => void perform(async () => {
-    const scheduled = timer.startAt > now + 2_000
-    const input = { roomId: activeRoom.id, name: timer.name, scope: timer.type, durationSeconds: timer.durationSeconds ?? Math.ceil((timer.endAt - timer.startAt) / 1000), fixedEnd: timer.fixedEnd ?? false, color: timer.color, controlPolicy: timer.controlPolicy ?? 'creator_only', participantIds: timer.type === 'shared' ? timer.assigneeIds : [], scheduledFor: scheduled ? new Date(timer.startAt).toISOString() : null, startImmediately: !scheduled }
-    if (activeRoom.timers.some((item) => item.id === timer.id)) await gateway.updateCountdown(timer.id, input)
-    else await gateway.createCountdown(input)
-  })} onToggleTimer={(id) => void perform(() => {
-    const timer = activeRoom.timers.find((item) => item.id === id)
-    if (timer?.fixedEnd && timer.databaseState === 'running') return Promise.resolve()
-    const action = timer?.databaseState === 'running' || (timer?.databaseState === 'scheduled' && now >= timer.startAt) ? 'pause' : 'start'
-    return gateway.controlCountdown(id, action)
-  })} onDeleteTimer={(id) => void perform(() => gateway.controlCountdown(id, 'cancel'))} onRunAgain={(id) => void perform(async () => {
-    const timer = activeRoom.activity.find((item) => item.id === id)?.timer
-    if (!timer) return
-    await gateway.createCountdown({ roomId: activeRoom.id, name: timer.name, scope: timer.type, durationSeconds: timer.durationSeconds!, fixedEnd: false, color: timer.color, controlPolicy: timer.controlPolicy ?? 'creator_only', participantIds: timer.assigneeIds, scheduledFor: null, startImmediately: true })
-  })} onSendMessage={(message: ChatMessage) => void perform(() => gateway.sendMessage(activeRoom.id, message.text))} /> : <Dashboard rooms={rooms} now={now} displayName={displayName} isGuest={user.isAnonymous} isRemote onOpenRoom={(id) => {
+  return <div className="shell"><RemoteHeader now={now} connection={connection} onHome={() => setActiveRoom(null)} onEditProfile={profile.identityKind === 'permanent' ? () => setEditingProfile(true) : undefined} onSignOut={() => void signOut()} />{activeRoom ? <RoomView room={activeRoom} currentUserId={user.id} now={now} isRemote connectionLabel={activeRoom.browserLocal ? 'BROWSER ONLY' : connection === 'live' ? 'LIVE PRIVATE LINK' : 'RECONNECTING'} actionError={error} onBack={() => { setActiveRoom(null); void loadDashboard(user) }} onSaveTimer={saveTimer} onToggleTimer={toggleActiveTimer} onDeleteTimer={deleteTimer} onRunAgain={runAgain} onSendMessage={sendMessage} /> : <Dashboard rooms={rooms} now={now} displayName={displayName} isGuest={user.isAnonymous} isRemote loadError={error} onOpenRoom={(id) => {
     const room = rooms.find((item) => item.id === id)
     if (room) setActiveRoom(room)
   }} onCreateRoom={async (name) => {

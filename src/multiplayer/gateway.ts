@@ -40,6 +40,7 @@ export interface MultiplayerGateway {
   getProfile(userId: string): Promise<UserProfile>
   updateProfile(userId: string, handle: string, displayName: string): Promise<UserProfile>
   loadRooms(userId: string): Promise<Room[]>
+  ensurePersonalRoom(): Promise<void>
   loadRoom(roomId: string, userId: string, onlineUserIds?: Set<string>): Promise<{ room: Room; serverNow: number }>
   createRoom(name: string): Promise<{ roomId: string; inviteCode: string }>
   joinRoom(code: string, nickname?: string): Promise<JoinResult>

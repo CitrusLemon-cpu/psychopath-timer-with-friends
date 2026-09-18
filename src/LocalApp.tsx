@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Dashboard } from './components/Dashboard'
 import { RoomView } from './components/RoomView'
 import { demoState } from './demo'
-import { COMPLETION_GRACE_MS, getTimerStatus, toggleTimer } from './timer'
+import { createBrowserPersonalRoom, sweepCompletedTimers } from './personalRoom'
+import { toggleTimer } from './timer'
 import type { AppState, ChatMessage, MissionTimer, Room } from './types'
 
 const storageKey = 'psychopath-timer-react-state-v1'
@@ -12,14 +13,17 @@ const initialNow = Date.now()
 function loadState(): AppState {
   try {
     const saved = localStorage.getItem(storageKey)
-    if (saved) return JSON.parse(saved) as AppState
+    if (saved) {
+      const state = JSON.parse(saved) as AppState
+      return state.rooms.some((room) => room.isPersonal) ? state : { ...state, rooms: [createBrowserPersonalRoom(state.currentUserId, 'Ellen Ripley'), ...state.rooms] }
+    }
     const legacy = localStorage.getItem(legacyStorageKey)
-    if (!legacy) return demoState
+    if (!legacy) return { ...demoState, rooms: [createBrowserPersonalRoom(demoState.currentUserId, 'Ellen Ripley'), ...demoState.rooms] }
     const parsed = JSON.parse(legacy) as { people?: { id: string; name: string }[]; timers?: { id: string; name: string; start: string; end: string; color?: string; people?: string[]; pausedAt?: number }[] }
     const room = demoState.rooms[0]
     return {
       ...demoState,
-      rooms: [{
+      rooms: [createBrowserPersonalRoom(demoState.currentUserId, 'Ellen Ripley'), {
         ...room,
         crew: (parsed.people ?? []).map((person, index) => ({ id: person.id, name: person.name, role: 'CREW MEMBER', online: index < 3, initials: person.name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase() })),
         timers: (parsed.timers ?? []).map((timer) => ({ id: timer.id, name: timer.name, startAt: new Date(timer.start).getTime(), endAt: new Date(timer.end).getTime(), color: timer.color ?? '#54d6d2', type: 'shared', assigneeIds: timer.people ?? [], pausedAt: timer.pausedAt ?? null, createdBy: demoState.currentUserId })),
@@ -51,15 +55,10 @@ export default function LocalApp() {
       setState((current) => {
         let changed = false
         const rooms = current.rooms.map((room) => {
-          const completed = room.timers.filter((timer) => getTimerStatus(timer, tick) === 'complete' && !room.activity.some((item) => item.timer?.id === timer.id))
-          const expired = room.timers.filter((timer) => getTimerStatus(timer, tick) === 'complete' && tick - timer.endAt >= COMPLETION_GRACE_MS)
-          if (!completed.length && !expired.length) return room
+          const next = sweepCompletedTimers(room, tick)
+          if (!next) return room
           changed = true
-          return {
-            ...room,
-            timers: room.timers.filter((timer) => !expired.some((item) => item.id === timer.id)),
-            activity: [...completed.map((timer) => ({ id: crypto.randomUUID(), timer, label: 'TIMER COMPLETED', detail: timer.type.toUpperCase(), occurredAt: timer.endAt })), ...room.activity].slice(0, 25),
-          }
+          return next
         })
         return changed ? { ...current, rooms } : current
       })

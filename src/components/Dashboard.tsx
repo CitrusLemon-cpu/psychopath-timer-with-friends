@@ -12,9 +12,10 @@ interface DashboardProps {
   displayName?: string
   isGuest?: boolean
   isRemote?: boolean
+  loadError?: string
 }
 
-export function Dashboard({ rooms, now, onOpenRoom, onCreateRoom, onJoinRoom, displayName = 'Ripley', isGuest = false, isRemote = false }: DashboardProps) {
+export function Dashboard({ rooms, now, onOpenRoom, onCreateRoom, onJoinRoom, displayName = 'Ripley', isGuest = false, isRemote = false, loadError }: DashboardProps) {
   const [modal, setModal] = useState<'create' | 'join' | null>(null)
   const [value, setValue] = useState('')
   const [error, setError] = useState('')
@@ -49,6 +50,8 @@ export function Dashboard({ rooms, now, onOpenRoom, onCreateRoom, onJoinRoom, di
     setModal(next)
   }
 
+  const orderedRooms = [...rooms].sort((left, right) => Number(Boolean(right.isPersonal)) - Number(Boolean(left.isPersonal)))
+
   return (
     <main className="dashboard">
       <section className="dashboard-hero">
@@ -58,19 +61,20 @@ export function Dashboard({ rooms, now, onOpenRoom, onCreateRoom, onJoinRoom, di
         <div className="dashboard-actions">{!isGuest && <button className="primary" onClick={() => openModal('create')}>+ CREATE ROOM</button>}<button className="secondary" onClick={() => openModal('join')}>JOIN WITH CODE</button></div>
         {isGuest && <p className="access-note">GUEST SESSION · JOIN ROOMS AND CREATE PERSONAL TIMERS</p>}
         {notice && <p className="success-note" role="status">{notice}</p>}
+        {loadError && <p className="form-error" role="alert">{loadError}</p>}
       </section>
       <section className="saved-rooms">
         <div className="section-heading"><div><p className="eyebrow">// SAVED FREQUENCIES</p><h2>YOUR ROOMS</h2></div><span className="count-label">{String(rooms.length).padStart(2, '0')} RECORDS</span></div>
         <div className="room-grid">
-          {rooms.map((room) => {
+          {orderedRooms.map((room) => {
             const active = room.timers.filter((timer) => ['running', 'paused'].includes(getTimerStatus(timer, now))).length
             const online = room.crew.filter((member) => member.online).length
             return (
               <button className="room-card panel" key={room.id} onClick={() => onOpenRoom(room.id)}>
-                <div className="room-card-top"><span className="room-glyph">✦</span><span className="room-code">{room.code}</span></div>
+                <div className="room-card-top"><span className="room-glyph">{room.isPersonal ? '◎' : '✦'}</span><span className="room-code">{room.isPersonal ? 'PERSONAL' : room.code}</span></div>
                 <h3>{room.name}</h3><p>{room.deck}</p>
-                <div className="room-stats"><span><strong>{String(active).padStart(2, '0')}</strong> ACTIVE TIMERS</span><span><strong>{String(online).padStart(2, '0')}</strong> CREW ONLINE</span></div>
-                <div className="room-enter">ENTER CONTROL ROOM <span>→</span></div>
+                <div className="room-stats"><span><strong>{String(active).padStart(2, '0')}</strong> ACTIVE TIMERS</span><span><strong>{String(room.isPersonal ? room.chat.length : online).padStart(2, '0')}</strong> {room.isPersonal ? 'LOG ENTRIES' : 'CREW ONLINE'}</span></div>
+                <div className="room-enter">{room.isPersonal ? 'OPEN PERSONAL ROOM' : 'ENTER CONTROL ROOM'} <span>→</span></div>
               </button>
             )
           })}

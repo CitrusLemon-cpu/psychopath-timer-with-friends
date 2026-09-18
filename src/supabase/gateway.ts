@@ -79,7 +79,13 @@ export class SupabaseGateway implements MultiplayerGateway {
     const { data, error } = await this.client.from('room_memberships').select('*').eq('user_id', userId).order('updated_at', { ascending: false })
     throwIfError(error)
     if (!data) return []
-    return Promise.all(data.map(async (membership) => (await this.loadRoom(membership.room_id, userId)).room))
+    const rooms = await Promise.all(data.map(async (membership) => (await this.loadRoom(membership.room_id, userId)).room))
+    return rooms.sort((left, right) => Number(Boolean(right.isPersonal)) - Number(Boolean(left.isPersonal)))
+  }
+
+  async ensurePersonalRoom() {
+    const { error } = await this.client.rpc('ensure_personal_room')
+    throwIfError(error)
   }
 
   async loadRoom(roomId: string, userId: string, onlineUserIds?: Set<string>) {
