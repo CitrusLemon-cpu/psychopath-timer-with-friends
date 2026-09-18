@@ -1,0 +1,10 @@
+@media (max-width: 760px) {
+  .workspace {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .right-rail {
+    order: -1;
+  }
+}
