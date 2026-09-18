@@ -46,10 +46,12 @@ export interface Database {
       request_room_join_with_invite: { Args: { invite_code: string; nickname?: string | null }; Returns: { id: string; status: string } }
       create_countdown: { Args: { target_scope: TimerScope; countdown_name: string; seconds: number; target_room_id: string; policy?: TimerControlPolicy; participant_ids?: string[]; scheduled_for?: string | null; countdown_color?: string }; Returns: CountdownRow }
       create_and_start_countdown: { Args: { target_scope: TimerScope; countdown_name: string; seconds: number; target_room_id: string; policy?: TimerControlPolicy; participant_ids?: string[]; countdown_color?: string }; Returns: CountdownRow }
+      update_countdown: { Args: { target_countdown_id: string; target_scope: TimerScope; countdown_name: string; seconds: number; countdown_color: string; policy: TimerControlPolicy; participant_ids: string[]; scheduled_for: string | null; start_immediately: boolean }; Returns: CountdownRow }
       control_countdown: { Args: { target_countdown_id: string; action: string }; Returns: CountdownRow }
       finalize_elapsed_countdowns: { Args: { target_room_id: string }; Returns: number }
       leave_room: { Args: { target_room_id: string }; Returns: undefined }
       can_control_countdown: { Args: { target_countdown_id: string; target_user_id?: string }; Returns: boolean }
+      can_edit_countdown: { Args: { target_countdown_id: string; target_user_id?: string }; Returns: boolean }
       send_room_message: { Args: { target_room_id: string; message_content: string; reply_to?: string | null }; Returns: MessageRow }
     }
     Enums: {

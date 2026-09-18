@@ -26,6 +26,7 @@ export interface MissionTimer {
   controlPolicy?: TimerControlPolicy
   databaseState?: TimerDatabaseState
   canControl?: boolean
+  canEdit?: boolean
 }
 
 export interface ActivityItem {

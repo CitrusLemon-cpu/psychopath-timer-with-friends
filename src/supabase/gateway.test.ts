@@ -39,6 +39,14 @@ describe('SupabaseGateway RPC boundary', () => {
     expect(rpc).toHaveBeenCalledWith('create_and_start_countdown', { target_scope: 'shared', countdown_name: 'Shared check', seconds: 600, countdown_color: '#a78bfa', target_room_id: createdRoom.id, policy: 'all_assigned', participant_ids: ['user-1', 'user-2'] })
   })
 
+  it('updates countdowns through the authorized RPC', async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: { id: 'timer-1' }, error: null })
+    await new SupabaseGateway(clientWithRpc(rpc)).updateCountdown('timer-1', { roomId: createdRoom.id, name: 'Updated check', scope: 'shared', durationSeconds: 90, color: '#54d6d2', controlPolicy: 'all_assigned', participantIds: ['user-2'], scheduledFor: null, startImmediately: true })
+    expect(rpc).toHaveBeenCalledWith('update_countdown', {
+      target_countdown_id: 'timer-1', target_scope: 'shared', countdown_name: 'Updated check', seconds: 90, countdown_color: '#54d6d2', policy: 'all_assigned', participant_ids: ['user-2'], scheduled_for: null, start_immediately: true,
+    })
+  })
+
   it('leaves every guest membership before signing out', async () => {
     const rpc = vi.fn().mockResolvedValue({ data: null, error: null })
     const signOut = vi.fn().mockResolvedValue({ error: null })

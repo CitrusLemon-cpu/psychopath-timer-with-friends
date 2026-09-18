@@ -19,7 +19,6 @@ select is(
 
 update public.profiles set handle = case id
   when '10000000-0000-0000-0000-000000000001' then 'owner'
-  when '10000000-0000-0000-0000-000000000002' then 'member'
   when '10000000-0000-0000-0000-000000000003' then 'outsider'
   else handle end,
   display_name = coalesce(display_name, case id

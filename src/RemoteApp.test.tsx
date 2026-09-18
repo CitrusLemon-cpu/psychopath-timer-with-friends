@@ -10,7 +10,7 @@ const profile: UserProfile = { id: user.id, handle: 'ripley', displayName: 'Elle
 const room: Room = {
   id: 'room-1', code: 'CREWCODE1', inviteCode: 'CREWCODE1', name: 'USCSS NOSTROMO', deck: '1/10 CREW · INVITE ONLY', lastVisitedAt: Date.now(), role: 'owner', canCreateSharedTimers: true,
   crew: [{ id: user.id, name: 'Ellen Ripley', handle: 'ripley', role: 'OWNER', online: true, initials: 'ER' }],
-  timers: [{ id: 'timer-1', name: 'AIRLOCK CYCLE', startAt: Date.now() - 1_000, endAt: Date.now() + 60_000, color: '#54d6d2', type: 'shared', assigneeIds: [user.id], pausedAt: null, createdBy: user.id, durationSeconds: 60, controlPolicy: 'all_assigned', databaseState: 'running', canControl: true }],
+  timers: [{ id: 'timer-1', name: 'AIRLOCK CYCLE', startAt: Date.now() - 1_000, endAt: Date.now() + 60_000, color: '#54d6d2', type: 'shared', assigneeIds: [user.id], pausedAt: null, createdBy: user.id, durationSeconds: 60, controlPolicy: 'all_assigned', databaseState: 'running', canControl: true, canEdit: true }],
   activity: [], chat: [],
 }
 
@@ -29,6 +29,7 @@ function gateway(overrides: Partial<MultiplayerGateway> = {}) {
     createRoom: vi.fn(async () => ({ roomId: room.id, inviteCode: room.code })),
     joinRoom: vi.fn(async () => ({ status: 'joined' as const, roomId: room.id })),
     createCountdown: vi.fn(async () => undefined),
+    updateCountdown: vi.fn(async () => undefined),
     controlCountdown: vi.fn(async () => undefined),
     finalizeElapsedCountdowns: vi.fn(async () => 0),
     sendMessage: vi.fn(async () => undefined),
@@ -45,9 +46,10 @@ describe('Supabase mode', () => {
     const actor = userEvent.setup()
     render(<App gateway={remote} />)
     await actor.type(await screen.findByLabelText('EMAIL'), 'crew@example.test')
-    await actor.type(screen.getByLabelText('PASSWORD'), 'secret12')
+    await actor.type(screen.getByLabelText('PASSWORD'), 'SeCrEt12')
     await actor.click(screen.getByRole('button', { name: /SIGN IN →/ }))
-    expect(remote.signIn).toHaveBeenCalledWith('crew@example.test', 'secret12')
+    expect(remote.signIn).toHaveBeenCalledWith('crew@example.test', 'SeCrEt12')
+    expect(screen.getByLabelText('PASSWORD')).toHaveClass('password-input')
     expect(screen.queryByRole('button', { name: '+ CREATE ROOM' })).not.toBeInTheDocument()
   })
 
@@ -90,6 +92,29 @@ describe('Supabase mode', () => {
     await actor.type(screen.getByPlaceholderText('e.g. Survive the shift'), 'Reactor check')
     await actor.click(screen.getByRole('button', { name: /DEPLOY TIMER →/ }))
     await waitFor(() => expect(remote.createCountdown).toHaveBeenCalledWith(expect.objectContaining({ roomId: room.id, name: 'Reactor check', scope: 'shared', color: '#54d6d2', participantIds: [user.id], controlPolicy: 'creator_only', startImmediately: true })))
+  })
+
+  it('updates an editable remote timer instead of creating a duplicate', async () => {
+    const remote = gateway()
+    const actor = userEvent.setup()
+    render(<App gateway={remote} />)
+    await actor.click(await screen.findByRole('button', { name: /USCSS NOSTROMO/i }))
+    await actor.click(screen.getByRole('button', { name: 'EDIT' }))
+    const name = screen.getByPlaceholderText('e.g. Survive the shift')
+    await actor.clear(name)
+    await actor.type(name, 'Updated airlock')
+    await actor.click(screen.getByRole('button', { name: /SAVE CHANGES →/ }))
+    await waitFor(() => expect(remote.updateCountdown).toHaveBeenCalledWith('timer-1', expect.objectContaining({ name: 'Updated airlock', scope: 'shared' })))
+    expect(remote.createCountdown).not.toHaveBeenCalled()
+  })
+
+  it('keeps an established handle disabled while editing a profile', async () => {
+    const remote = gateway()
+    const actor = userEvent.setup()
+    render(<App gateway={remote} />)
+    await actor.click(await screen.findByRole('button', { name: 'PROFILE' }))
+    expect(screen.getByLabelText('HANDLE')).toBeDisabled()
+    expect(screen.getByText(/handle is permanent/i)).toBeInTheDocument()
   })
 
   it('re-fetches authoritative room data after realtime changes', async () => {

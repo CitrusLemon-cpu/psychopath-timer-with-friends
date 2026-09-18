@@ -58,6 +58,7 @@ export function mapRoomData(input: {
       : row.creator_id === input.currentUserId
         || (row.control_policy === 'all_assigned' && assigned.includes(input.currentUserId))
         || (input.room.moderators_can_control_timers && ['owner', 'moderator'].includes(input.membership.role))
+    const canEdit = row.creator_id === input.currentUserId || (row.scope === 'shared' && assigned.includes(input.currentUserId))
     return {
       id: row.id,
       name: row.name,
@@ -72,6 +73,7 @@ export function mapRoomData(input: {
       controlPolicy: row.control_policy,
       databaseState: row.state,
       canControl,
+      canEdit,
     }
   })
   const timerMap = new Map(timers.map((timer) => [timer.id, timer]))
